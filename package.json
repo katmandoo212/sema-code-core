@@ -48,7 +48,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@vscode/ripgrep": "^1.17.0",
-    "diff": "^7.0.0",
+    "diff": "7.0.0",
     "events": "^3.3.0",
     "glob": "^13.0.0",
     "gray-matter": "^4.0.3",
@@ -67,7 +67,7 @@
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^20.19.25",
     "@types/shell-quote": "^1.7.5",
-    "eslint": "^8.0.0",
+    "eslint": "^10.0.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0"
