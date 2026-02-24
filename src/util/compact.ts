@@ -350,51 +350,72 @@ export async function compactMessages(
  * 自动上下文压缩的主要入口函数
  *
  * 该函数在每次查询前被调用，用于检查对话是否已超出容量需要压缩。
- * 会自动分离最后的用户消息（如果有），压缩历史消息后再添加回用户消息。
+ * 找到最后一条真实用户消息（非 tool_result），只压缩它之前的历史，
+ * 保留"当前对话轮次"（lastRealUserMsg + assistantMsg + toolResults）不动。
+ * 这样可以保证：
+ * 1. 压缩后的消息列表以用户消息结尾，LLM 调用不会失败
+ * 2. tool_use / tool_result 的配对关系不被破坏
  */
 export async function checkAutoCompact(
   messages: Message[],
   abortController: AbortController
 ): Promise<{ messages: Message[]; wasCompacted: boolean }> {
-  // 分离最后的用户消息（如果是真正的用户输入而不是工具结果）
-  let newUserMessage: Message | null = null
-  let messagesToCheck = messages
+  if (messages.length < 3) {
+    return { messages, wasCompacted: false }
+  }
 
-  const lastMessage = messages[messages.length - 1]
-  if (lastMessage?.type === 'user') {
-    // 检查是否是真正的用户查询（而不是 tool result）
-    const isToolResult = Array.isArray(lastMessage.message.content) &&
-      lastMessage.message.content.length > 0 &&
-      lastMessage.message.content[0]?.type === 'tool_result'
+  // 基于全部消息的 token 数判断是否需要压缩
+  if (!(await shouldAutoCompact(messages))) {
+    return { messages, wasCompacted: false }
+  }
 
-    if (!isToolResult) {
-      // 最后一条是真正的用户消息，需要分离以便压缩历史消息
-      newUserMessage = lastMessage
-      messagesToCheck = messages.slice(0, -1)
-      logDebug(`[Compact] Separated new user message for compression check`)
+  // 从后往前找最后一条真实用户消息（非 tool_result）的索引
+  let lastRealUserIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].type === 'user') {
+      const content = messages[i].message.content
+      const isToolResult = Array.isArray(content) &&
+        content.length > 0 &&
+        content[0]?.type === 'tool_result'
+      if (!isToolResult) {
+        lastRealUserIdx = i
+        break
+      }
     }
   }
 
-  if (!(await shouldAutoCompact(messagesToCheck))) {
+  if (lastRealUserIdx === -1) {
+    // 没有找到真实用户消息，跳过压缩
+    return { messages, wasCompacted: false }
+  }
+
+  // 只压缩最后一条真实用户消息之前的历史
+  const messagesToCompact = messages.slice(0, lastRealUserIdx)
+  // 保留当前对话轮次（最后一条真实用户消息及之后的所有内容）
+  const messagesToKeep = messages.slice(lastRealUserIdx)
+
+  if (messagesToCompact.length < 2) {
+    // 历史消息太少，不值得压缩
     return { messages, wasCompacted: false }
   }
 
   try {
-    const compactedMessages = await compactMessages(messagesToCheck, abortController)
+    const compactedHistory = await compactMessages(messagesToCompact, abortController)
 
-    // 如果有新的用户消息，添加到压缩后的消息列表
-    const finalMessages = newUserMessage
-      ? [...compactedMessages, newUserMessage]
-      : compactedMessages
+    // 组合结果示例（工具调用场景）：
+    //   [compactNotice(user), summaryMsg(assistant), lastRealUserMsg(user), assistantMsg(assistant), toolResult(user)]
+    // 组合结果示例（新查询场景）：
+    //   [compactNotice(user), summaryMsg(assistant), newUserQuery(user)]
+    // 两种场景均以 user 消息结尾，API 调用合法
+    const finalMessages = [...compactedHistory, ...messagesToKeep]
 
-    logDebug(`[Compact] Final messages count: ${finalMessages.length}, with new user message: ${!!newUserMessage}`)
+    logDebug(`[Compact] Final messages count: ${finalMessages.length}, kept current turn: ${messagesToKeep.length} messages`)
 
     return {
       messages: finalMessages,
       wasCompacted: true,
     }
   } catch (error) {
-    // 如果压缩完全失败，返回原始消息
     logError(`Auto-compact failed completely: ${error}. Continuing with original messages`)
     return { messages, wasCompacted: false }
   }
