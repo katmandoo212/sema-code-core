@@ -79,5 +79,8 @@
   ],
   "engines": {
     "node": ">=16.0.0"
+  },
+  "overrides": {
+    "diff": "7.0.0"
   }
 }
