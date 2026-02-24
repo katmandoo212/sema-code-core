@@ -14,6 +14,7 @@ import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
 import { getToolInfos } from '../tools/base/tools';
+import { resolveAdapter } from '../util/adapter';
 import { logInfo } from '../util/log';
 
 /**
@@ -67,7 +68,6 @@ export class SemaCore {
   interruptSession = () => this.engine.interruptSession();
 
   // ==================== 模型管理 ====================
-  // 异步操作，返回结果并通过 model:update 事件通知
   addModel = (config: ModelConfig, skipValidation?: boolean): Promise<ModelUpdateData> => getModelManager().addNewModel(config, skipValidation);
   delModel = (ModelName: string): Promise<ModelUpdateData> => getModelManager().deleteModel(ModelName);
   switchModel = (ModelName: string): Promise<ModelUpdateData> => getModelManager().switchCurrentModel(ModelName);
@@ -86,6 +86,7 @@ export class SemaCore {
   // 独立的工具函数，不依赖会话状态
   fetchAvailableModels = (params: FetchModelsParams): Promise<FetchModelsResult> => fetchModels(params);
   testApiConnection = (params: ApiTestParams): Promise<ApiTestResult> => testApiConnection(params);
+  getModelAdapter = (provider: string, modelName: string) => resolveAdapter(provider, modelName);
 
   // ==================== MCP 管理 ====================
   addOrUpdateMCPServer = (config: MCPServerConfig, scope: MCPScopeType): Promise<MCPServerInfo> => getMCPManager().addOrUpdateServer(config, scope);
@@ -98,7 +99,6 @@ export class SemaCore {
   getSkillsInfo = (): SkillInfo[] => getSkillsInfo();
 
   // ==================== Agents 管理 ====================
-  // getAgentsConfs = (): AgentConfig[] => getAgentsConfs();
   getAgentsInfo = (): AgentInfo[] => getAgentsInfo();
   addAgentConf = (agentConf: AgentConfig): Promise<boolean> => addAgentConf(agentConf);
 
@@ -107,7 +107,6 @@ export class SemaCore {
   reloadCustomCommands = (): void => reloadCustomCommandsImpl();
 
   // ==================== 资源管理 ====================
-  // 清理所有资源并停止 Sema 核心服务
   dispose = async () => {
     await getMCPManager().dispose();
     this.engine.dispose();

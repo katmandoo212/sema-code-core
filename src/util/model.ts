@@ -64,6 +64,6 @@ export function convertToModelProfile(config: ModelConfig): ModelProfile {
     apiKey: config.apiKey,
     maxTokens: config.maxTokens,
     contextLength: config.contextLength,
-    adapt: resolveAdapter(config.provider, config.modelName)
+    adapt: config.adapt ?? resolveAdapter(config.provider, config.modelName)
   };
 }

@@ -9,8 +9,8 @@ export type AdapterType = 'openai' | 'anthropic'
 
 // 模型配置接口
 export interface ModelProfile {
-  name: string              // 模型唯一标识  deepseek v3.1[custom-openai]
-  provider: string          // 提供商：anthropic, openai, custom-openai 等
+  name: string              // 模型唯一标识  deepseek v3.1[custom]
+  provider: string          // 提供商：anthropic, openai, custom 等
   modelName: string         // API 调用时使用的模型名 如：deepseek v3.1
   baseURL?: string          // 自定义 API 端点
   apiKey: string            // API 密钥

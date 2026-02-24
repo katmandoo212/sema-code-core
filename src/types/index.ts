@@ -40,6 +40,7 @@ export interface ModelConfig {
   apiKey: string;
   maxTokens: number;
   contextLength: number;
+  adapt?: import('./model').AdapterType;
 }
 
 export interface TaskConfig {
@@ -80,6 +81,7 @@ export interface ApiTestParams {
   baseURL: string;
   apiKey: string;
   modelName: string;
+  adapt?: import('./model').AdapterType;
 }
 
 // 模型更新数据接口

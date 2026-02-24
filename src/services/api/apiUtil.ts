@@ -27,7 +27,7 @@ interface HttpResponse {
  * 通用 HTTP 请求函数
  */
 function httpRequest(options: HttpRequestOptions): Promise<HttpResponse> {
-  const { url, method, headers, body, timeout = 10000 } = options;
+  const { url, method, headers, body, timeout = 15000 } = options;
   const urlObj = new URL(url);
   const isHttps = urlObj.protocol === 'https:';
   const httpModule = isHttps ? https : http;
@@ -141,8 +141,8 @@ function buildCurlCommand(apiUrl: string, apiKey: string, body: object, config: 
  * 测试 API 连接
  */
 export async function testApiConnection(params: ApiTestParams): Promise<ApiTestResult> {
-  const { provider = 'custom-openai', baseURL, apiKey, modelName } = params;
-  const adapter = resolveAdapter(provider, modelName);
+  const { provider = 'custom', baseURL, apiKey, modelName, adapt } = params;
+  const adapter = adapt ?? resolveAdapter(provider, modelName);
   // console.log(`adapter: ${adapter}, ${provider}, ${modelName}`)
   const config = API_CONFIGS[adapter] || API_CONFIGS.openai;
 
@@ -215,7 +215,7 @@ const MODEL_MAP = {
  * 获取可用模型列表
  */
 export async function fetchModels(params: FetchModelsParams): Promise<FetchModelsResult> {
-  const { provider = 'custom-openai', baseURL, apiKey } = params;
+  const { provider = 'custom', baseURL, apiKey } = params;
 
   let result: FetchModelsResult;
 

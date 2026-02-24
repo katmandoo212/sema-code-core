@@ -9,7 +9,7 @@ const ADAPTER_ROUTING_CONFIG: Record<AdapterType, Record<string, string | string
     'minimax': '*',
     'deepseek': ['deepseek-chat', 'deepseek-reasoner'],
     'openrouter': ['anthropic/*'],
-    'midea-aimp': ['claude-*'],
+    'custom': ['*claude*'],
   },
   openai: {} // 默认适配器，无需配置
 }
@@ -22,11 +22,10 @@ function matchModelPattern(modelName: string, pattern: string): boolean {
   if (pattern === '*') {
     return true
   }
-  if (pattern.endsWith('*')) {
-    const prefix = pattern.slice(0, -1) // 去掉 "*"
-    return modelName.startsWith(prefix)
-  }
-  return modelName.toLowerCase() === pattern.toLowerCase()
+  const regexStr = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+  return new RegExp(`^${regexStr}$`, 'i').test(modelName)
 }
 
 /**
