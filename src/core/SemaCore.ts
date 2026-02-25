@@ -1,5 +1,5 @@
 import { SemaCoreConfig, ModelConfig, TaskConfig, FetchModelsParams, FetchModelsResult, ApiTestParams, ApiTestResult, ModelUpdateData, UpdatableCoreConfigKeys, UpdatableCoreConfig } from '../types';
-import { FileReferenceInfo, ToolInfo } from '../types/index';
+import { ToolInfo } from '../types/index';
 import { MCPServerConfig, MCPScopeType, MCPServerInfo } from '../types/mcp';
 import { SkillInfo } from '../types/skill';
 import { AgentInfo, AgentConfig } from '../types/agent';

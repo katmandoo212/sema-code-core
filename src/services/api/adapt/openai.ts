@@ -120,7 +120,8 @@ async function streamChat(
   }
 
   // --- 构建结果，添加累积的 reasoning_content ---
-  const tool_calls: OpenAI.ChatCompletionMessageToolCall[] | undefined = toolCallsMap.size
+  // 中断时跳过：流式中断导致参数不完整，无法与合法无参工具调用区分
+  const tool_calls: OpenAI.ChatCompletionMessageToolCall[] | undefined = (!signal?.aborted && toolCallsMap.size)
     ? Array.from(toolCallsMap.entries())
       .sort(([a], [b]) => a - b)
       .map(([_index, tc]) => ({

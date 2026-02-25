@@ -139,17 +139,20 @@ async function streamChat(
   }
 
   // 添加 tool_use blocks（解析 JSON input）
-  for (const block of contentBlocks) {
-    if (block && block.type === 'tool_use') {
-      const toolBlock = block as any;
-      finalContentBlocks.push({
-        type: 'tool_use',
-        id: toolBlock.id,
-        name: toolBlock.name,
-        input: typeof toolBlock.input === 'string'
-          ? JSON.parse(toolBlock.input || '{}')
-          : toolBlock.input,
-      } as Anthropic.ContentBlock);
+  // 中断时跳过：流式中断导致参数不完整，无法与合法无参工具调用区分
+  if (!signal?.aborted) {
+    for (const block of contentBlocks) {
+      if (block && block.type === 'tool_use') {
+        const toolBlock = block as any;
+        finalContentBlocks.push({
+          type: 'tool_use',
+          id: toolBlock.id,
+          name: toolBlock.name,
+          input: typeof toolBlock.input === 'string'
+            ? JSON.parse(toolBlock.input || '{}')
+            : toolBlock.input,
+        } as Anthropic.ContentBlock);
+      }
     }
   }
 
