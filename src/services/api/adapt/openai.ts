@@ -10,7 +10,7 @@ import { buildTools } from '../../../tools/base/tools'
 import { logLLMRequest } from '../../../util/logLLM'
 import { logDebug } from '../../../util/log'
 import { useMaxCompletionTokens } from '../../../util/adapter'
-import { emitChunkEvent, getChunkEventBus } from './util'
+import { emitChunkEvent, getChunkEventBus, withStreamTimeout } from './util'
 
 // openai 不要温度了，部分模型开了think只能为1，不开think只能为0.6，干脆不加了
 
@@ -222,12 +222,18 @@ export async function queryOpenAI(
 
   logLLMRequest(requestBody)
 
-  // 统一使用 streamChat 处理请求
-  const chatCompletion = await streamChat({
-    url: baseURL,
-    headers,
-    body: requestBody,
-  }, signal, emitChunkEvents)
+  // 统一使用 streamChat 处理请求（合并超时信号，最长等待 5 分钟）
+  const { signal: streamSignal, cleanup } = withStreamTimeout(signal)
+  let chatCompletion: OpenAI.ChatCompletion
+  try {
+    chatCompletion = await streamChat({
+      url: baseURL,
+      headers,
+      body: requestBody,
+    }, streamSignal, emitChunkEvents)
+  } finally {
+    cleanup()
+  }
 
   const durationMs = Date.now() - start
 

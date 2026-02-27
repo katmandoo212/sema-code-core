@@ -6,7 +6,7 @@ import { Tool } from '../../../tools/base/Tool'
 import { buildTools } from '../../../tools/base/tools'
 import { logLLMRequest } from '../../../util/logLLM'
 import { logDebug } from '../../../util/log'
-import { MAIN_QUERY_TEMPERATURE, emitChunkEvent, getChunkEventBus } from './util'
+import { MAIN_QUERY_TEMPERATURE, emitChunkEvent, getChunkEventBus, withStreamTimeout } from './util'
 
 export { MAIN_QUERY_TEMPERATURE }
 
@@ -220,12 +220,18 @@ export async function queryAnthropic(
 
   logLLMRequest(requestBody)
 
-  // 统一使用 streamChat 处理请求
-  const parsedMessage = await streamChat({
-    url: baseURL,
-    headers,
-    body: requestBody,
-  }, signal, emitChunkEvents)
+  // 统一使用 streamChat 处理请求（合并超时信号，最长等待 5 分钟）
+  const { signal: streamSignal, cleanup } = withStreamTimeout(signal)
+  let parsedMessage: Anthropic.Message
+  try {
+    parsedMessage = await streamChat({
+      url: baseURL,
+      headers,
+      body: requestBody,
+    }, streamSignal, emitChunkEvents)
+  } finally {
+    cleanup()
+  }
 
   const durationMs = Date.now() - start
 
