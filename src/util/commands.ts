@@ -115,7 +115,9 @@ const getCommandPrefix = memoize(
     command: string,
     abortSignal: AbortSignal,
   ): Promise<CommandPrefixResult | null> => {
-    const response = await queryQuick({
+    let response
+    try {
+      response = await queryQuick({
       systemPrompt: [
         {
           type: 'text',
@@ -180,6 +182,9 @@ Command: ${command}
       signal: abortSignal,
       enableLLMCache: false,
     })
+    } catch {
+      return null
+    }
 
     const prefix =
       typeof response.message.content === 'string'

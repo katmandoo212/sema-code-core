@@ -210,7 +210,7 @@ async function checkBashPermission(
   if (!commandInfo || commandInfo.commandInjectionDetected) {
     return bashToolHasExactMatch(tool, command, allowedTools)
       ? { result: true }
-      : requestPermissionViaEvent(tool, { command }, null, abortController, agentId)
+      : requestPermissionViaEvent(tool, { command }, null, abortController, agentId, false)
   }
 
   if (subCommands.length < 2) {
@@ -288,7 +288,8 @@ async function requestPermissionViaEvent(
   input: ToolInput,
   prefix: string | null,
   abortController: AbortController,
-  agentId: string
+  agentId: string,
+  showAllow = true
 ): Promise<PermissionResult> {
 
   // 使用工具的 genToolPermission 方法获取 title 和 content
@@ -299,7 +300,7 @@ async function requestPermissionViaEvent(
     toolName: tool.name,
     title: permissionInfo?.title || tool.name,
     content: permissionInfo?.content || '',
-    options: buildPermissionOptions(tool, input, prefix)
+    options: buildPermissionOptions(tool, input, prefix, showAllow)
   }
 
   const eventBus = getEventBus()
@@ -374,12 +375,16 @@ async function requestPermissionViaEvent(
 function buildPermissionOptions(
   tool: Tool,
   input: ToolInput,
-  prefix: string | null
-): { agree: string; allow: string; refuse: string } {
+  prefix: string | null,
+  showAllow = true
+): Record<string, string> {
   // Bash工具
   if (tool.name === BashTool.name) {
     const command = ((input as any).command || '').trim()
-    const mainCommand = command.split(' ')[0]
+
+    if (!showAllow) {
+      return { agree: '确认', refuse: '拒绝' }
+    }
 
     if (prefix) {
       return {
