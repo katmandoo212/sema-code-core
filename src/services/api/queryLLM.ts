@@ -27,7 +27,8 @@ export async function queryLLM(
   signal: AbortSignal,
   tools: Tool[],
   modelPointer: ModelPointerType = 'main',
-  disableChunkEvents: boolean = false
+  disableChunkEvents: boolean = false,
+  suppressErrorEvents: boolean = false
 ): Promise<AssistantMessage> {
   const modelProfile = getModelManager().getModel(modelPointer)
 
@@ -90,7 +91,7 @@ export async function queryLLM(
 
     return result
   } catch (error) {
-    if (error instanceof Error && error.name !== 'InterruptedException') {
+    if (!suppressErrorEvents && error instanceof Error && error.name !== 'InterruptedException') {
       emitSessionError(error)
     }
     throw error
@@ -189,6 +190,7 @@ export async function queryQuick({
     signal || new AbortController().signal,
     [],
     'quick',
-    true // 禁用流式事件
+    true, // 禁用流式事件
+    true  // 禁用错误事件
   )
 }
