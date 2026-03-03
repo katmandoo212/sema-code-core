@@ -1,3 +1,4 @@
+import { type Hunk } from 'diff'
 import { existsSync, readFileSync } from 'fs'
 import { extname, isAbsolute, relative, resolve } from 'path'
 import { z } from 'zod'
@@ -11,8 +12,14 @@ import {
 } from '../../util/file'
 import { safeParseJSON } from '../../util/format'
 import { getCwd } from '../../util/cwd'
+import { getPatch } from '../../util/diff'
 import { TOOL_NAME_FOR_PROMPT, DESCRIPTION } from './prompt'
 
+
+// 辅助函数：标准化 cell source（可能是 string 或 string[]）
+function normalizeCellSource(source: string | string[]): string {
+  return Array.isArray(source) ? source.join('') : (source ?? '')
+}
 
 // 辅助函数：生成显示标题
 function getTitle(input?: { notebook_path?: string; cell_number?: number }) {
@@ -77,18 +84,57 @@ export const NotebookEditTool = {
   },
   genToolPermission(input) {
     const title = getTitle(input)
-    const content = input.new_source
+    const editMode = input.edit_mode ?? 'replace'
+    let oldSource = ''
+    let newSource = input.new_source ?? ''
+
+    if (editMode !== 'insert') {
+      const fullPath = normalizeFilePath(input.notebook_path)
+      if (existsSync(fullPath)) {
+        const enc = detectFileEncoding(fullPath)
+        const fileContent = readFileSync(fullPath, enc)
+        const notebook = safeParseJSON(fileContent) as NotebookContent | null
+        if (notebook && input.cell_number < notebook.cells.length) {
+          oldSource = normalizeCellSource(notebook.cells[input.cell_number].source as string | string[])
+        }
+      }
+    }
+
+    if (editMode === 'delete') {
+      newSource = ''
+    }
+
+    const patch = getPatch({
+      filePath: input.notebook_path,
+      fileContents: oldSource,
+      oldStr: oldSource,
+      newStr: newSource,
+    })
+
+    const content = {
+      type: 'diff',
+      patch,
+      diffText: '',
+    }
+
     return { title, content }
   },
-  genToolResultMessage({ notebook_path, cell_number, new_source, error }) {
-    const title = getTitle({ notebook_path })
+  genToolResultMessage({ notebook_path, cell_number, edit_mode, structuredPatch, error }) {
+    const title = getTitle({ notebook_path, cell_number })
     if (error) {
       const summary = `Failed to edit cell ${cell_number}`
       const content = error
       return { title, summary, content }
     }
-    const summary = `Updated cell ${cell_number}`
-    const content = new_source
+    const verb =
+      edit_mode === 'insert' ? 'Create' :
+      edit_mode === 'delete' ? 'Delete' : 'Update'
+    const summary = `${verb} ${title}`
+    const content = {
+      type: 'diff',
+      patch: structuredPatch ?? [],
+      diffText: '',
+    }
     return { title, summary, content }
   },
   getDisplayTitle(input) {
@@ -187,6 +233,12 @@ export const NotebookEditTool = {
       const notebook = JSON.parse(content) as NotebookContent
       const language = notebook.metadata.language_info?.name ?? 'python'
 
+      // 保存原始 cell 内容用于生成 diff
+      let originalSource = ''
+      if (edit_mode !== 'insert' && notebook.cells[cell_number]) {
+        originalSource = normalizeCellSource(notebook.cells[cell_number].source as string | string[])
+      }
+
       if (edit_mode === 'delete') {
         // Delete the specified cell
         notebook.cells.splice(cell_number, 1)
@@ -218,6 +270,14 @@ export const NotebookEditTool = {
       const updatedNotebook = JSON.stringify(notebook, null, 1)
       writeTextContent(fullPath, updatedNotebook, enc, endings!)
 
+      const finalNewSource = edit_mode === 'delete' ? '' : new_source
+      const structuredPatch = getPatch({
+        filePath: notebook_path,
+        fileContents: originalSource,
+        oldStr: originalSource,
+        newStr: finalNewSource,
+      })
+
       const data = {
         notebook_path,
         cell_number,
@@ -226,6 +286,7 @@ export const NotebookEditTool = {
         language,
         edit_mode: edit_mode ?? 'replace',
         error: '',
+        structuredPatch,
       }
       yield {
         type: 'result',
@@ -240,8 +301,9 @@ export const NotebookEditTool = {
           new_source,
           cell_type: cell_type ?? 'code',
           language: 'python',
-          edit_mode: 'replace',
+          edit_mode: edit_mode ?? 'replace',
           error: error.message,
+          structuredPatch: [] as Hunk[],
         }
         yield {
           type: 'result',
@@ -256,8 +318,9 @@ export const NotebookEditTool = {
         new_source,
         cell_type: cell_type ?? 'code',
         language: 'python',
-        edit_mode: 'replace',
+        edit_mode: edit_mode ?? 'replace',
         error: 'Unknown error occurred while editing notebook',
+        structuredPatch: [] as Hunk[],
       }
       yield {
         type: 'result',
@@ -276,5 +339,6 @@ export const NotebookEditTool = {
     language: string
     edit_mode: string
     error?: string
+    structuredPatch: Hunk[]
   }
 >
