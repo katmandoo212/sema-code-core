@@ -1,4 +1,5 @@
 import { relative, extname } from 'node:path'
+import * as fs from 'node:fs'
 import { z } from 'zod'
 import { Tool } from '../base/Tool'
 import {
@@ -8,7 +9,7 @@ import {
   readTextContent,
 } from '../../util/file'
 import { getCwd } from '../../util/cwd'
-import { TOOL_NAME_FOR_PROMPT, DESCRIPTION } from './prompt'
+import { TOOL_NAME_FOR_PROMPT, DESCRIPTION, MAX_LINES_TO_READ } from './prompt'
 import { secureFileService } from '../../util/secureFile'
 import { getStateManager } from '../../manager/StateManager'
 import { readNotebook, formatNotebookCells } from '../../util/notebook'
@@ -17,6 +18,15 @@ import { logDebug, logWarn, logInfo } from '../../util/log'
 
 const MAX_LINES_TO_RENDER = 5
 const MAX_OUTPUT_SIZE = 0.25 * 1024 * 1024 // 0.25MB in bytes
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
+const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+}
 
 const inputSchema = z.strictObject({
   file_path: z.string({
@@ -46,6 +56,16 @@ export const FileReadTool = {
     return true
   },
   genToolResultMessage(data) {
+    // 处理图片文件
+    if (data.type === 'image') {
+      const relativePath = relative(getCwd(), data.image.filePath)
+      return {
+        title: relativePath,
+        summary: `Read image ${relativePath}`,
+        content: '',
+      }
+    }
+
     // 处理 notebook 文件
     if (data.type === 'notebook') {
       const { filePath, cellCount } = data.notebook
@@ -125,8 +145,9 @@ export const FileReadTool = {
     const stats = fileCheck.stats!
     const fileSize = stats.size
 
-    // If file is too large and no offset/limit provided
-    if (fileSize > MAX_OUTPUT_SIZE && !offset && !limit) {
+    // If file is too large and no offset/limit provided (skip check for images)
+    const isImageFile = IMAGE_EXTENSIONS.has(extname(fullFilePath).toLowerCase())
+    if (!isImageFile && fileSize > MAX_OUTPUT_SIZE && !offset && !limit) {
       return {
         result: false,
         message: formatFileSizeError(fileSize),
@@ -137,7 +158,7 @@ export const FileReadTool = {
     return { result: true }
   },
   async *call(
-    { file_path, offset = 1, limit = undefined },
+    { file_path, offset = 1, limit = MAX_LINES_TO_READ },
     agentContext: any,
   ) {
     const fullFilePath = normalizeFilePath(file_path)
@@ -149,6 +170,29 @@ export const FileReadTool = {
 
     // 检测是否为 notebook 文件
     const fileExtension = extname(fullFilePath)
+
+    // 检测是否为图片文件
+    const lowerExt = fileExtension.toLowerCase()
+    if (IMAGE_EXTENSIONS.has(lowerExt)) {
+      const imageData = fs.readFileSync(fullFilePath).toString('base64')
+      const mediaType = IMAGE_MEDIA_TYPES[lowerExt]
+
+      const data = {
+        type: 'image' as const,
+        image: {
+          filePath: file_path,
+          data: imageData,
+          media_type: mediaType,
+        },
+      }
+
+      yield {
+        type: 'result',
+        data,
+        resultForAssistant: this.genResultForAssistant(data),
+      }
+      return
+    }
 
     if (fileExtension === '.ipynb') {
       // 读取并解析 notebook 文件
@@ -203,6 +247,20 @@ export const FileReadTool = {
     }
   },
   genResultForAssistant(data) {
+    // 处理图片文件
+    if (data.type === 'image') {
+      return [
+        {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            data: data.image.data,
+            media_type: data.image.media_type,
+          },
+        },
+      ]
+    }
+
     // 处理 notebook 文件
     if (data.type === 'notebook') {
       return formatNotebookCells(data.notebook.cells)
@@ -229,6 +287,14 @@ export const FileReadTool = {
         filePath: string
         cells: NotebookCellData[]
         cellCount: number
+      }
+    }
+  | {
+      type: 'image'
+      image: {
+        filePath: string
+        data: string
+        media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
       }
     }
 >

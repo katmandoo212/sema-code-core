@@ -353,34 +353,82 @@ function processUserMessage(
   messages: OpenAI.ChatCompletionMessageParam[],
   toolResults: Record<string, OpenAI.ChatCompletionToolMessageParam>
 ) {
-  const textBlocks: string[] = []
+  const contentParts: OpenAI.ChatCompletionContentPart[] = []
+  let hasImage = false
 
   contentBlocks.forEach(block => {
     if (block.type === 'text') {
-      textBlocks.push(block.text)
+      contentParts.push({ type: 'text', text: block.text })
+    } else if (block.type === 'image') {
+      hasImage = true
+      const source = block.source
+      if (source?.type === 'base64') {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: `data:${source.media_type};base64,${source.data}` },
+        })
+      } else if (source?.type === 'url') {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: source.url },
+        })
+      }
     } else if (block.type === 'tool_result') {
       toolResults[block.tool_use_id] = createToolResultMessage(block)
     }
   })
 
-  if (textBlocks.length > 0) {
+  if (contentParts.length > 0) {
     messages.push({
       role: message.message.role as 'user',
-      content: textBlocks.join('\n'),
+      content: hasImage
+        ? contentParts
+        : (contentParts as OpenAI.ChatCompletionContentPartText[]).map(p => p.text).join('\n'),
     })
   }
 }
 
 function createToolResultMessage(block: any): OpenAI.ChatCompletionToolMessageParam {
-  const content = typeof block.content === 'string'
-    ? block.content
-    : JSON.stringify(block.content)
+  if (typeof block.content === 'string') {
+    return {
+      role: 'tool',
+      content: block.content,
+      tool_call_id: block.tool_use_id,
+    }
+  }
+
+  const contentArray: any[] = Array.isArray(block.content) ? block.content : [block.content]
+  const hasImage = contentArray.some((item: any) => item.type === 'image')
+
+  if (!hasImage) {
+    const text = contentArray
+      .filter((item: any) => item.type === 'text')
+      .map((item: any) => item.text)
+      .join('\n')
+    return {
+      role: 'tool',
+      content: text,
+      tool_call_id: block.tool_use_id,
+    }
+  }
+
+  // 包含图片，转换为 OpenAI content parts 格式
+  const contentParts = contentArray.map((item: any) => {
+    if (item.type === 'image') {
+      const source = item.source
+      const url = source?.type === 'base64'
+        ? `data:${source.media_type};base64,${source.data}`
+        : source?.url || ''
+      return { type: 'image_url' as const, image_url: { url } }
+    }
+    return { type: 'text' as const, text: item.text || '' }
+  })
 
   return {
     role: 'tool',
-    content,
+    content: contentParts,
     tool_call_id: block.tool_use_id,
-  }
+  } as any
 }
 
 function buildFinalMessages(

@@ -204,9 +204,8 @@ async function processSingleReference(
         `limiting to ${MAX_LINES_TO_READ} lines centered around line ${midPoint} ` +
         `(reading lines ${actualStartLine}-${actualStartLine + actualLimit - 1})`)
     }
-    // 如果没有指定行号范围，限制读取前 MAX_LINES_TO_READ 行
+    // 如果没有指定行号范围，由 Read 工具默认 limit 处理截断
     else if (parsed.startLine === undefined) {
-      actualLimit = MAX_LINES_TO_READ
       shouldCheckTruncation = true
     }
 
@@ -244,8 +243,32 @@ async function processSingleReference(
       if (result.type === 'result') {
         const displayName = path.relative(getCwd(), fullPath) || path.basename(fullPath)
 
-        // 检查是否为 notebook 文件
-        if (result.data.type === 'notebook') {
+        // 检查是否为图片文件
+        if (result.data.type === 'image') {
+          // 注入图片 content block
+          systemReminders.push({
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              data: result.data.image.data,
+              media_type: result.data.image.media_type,
+            },
+          })
+
+          let sizeStr = ''
+          try {
+            const bytes = fs.statSync(fullPath).size
+            sizeStr = bytes >= 1024 * 1024
+              ? ` (${(bytes / (1024 * 1024)).toFixed(2)}MB)`
+              : ` (${(bytes / 1024).toFixed(1)}KB)`
+          } catch { /* ignore */ }
+
+          supplementaryInfo.push({
+            type: 'file',
+            name: displayName,
+            content: `Read ${displayName}${sizeStr}`,
+          })
+        } else if (result.data.type === 'notebook') {
           // Notebook 文件格式化为 JSON 数组格式
           const content = result.resultForAssistant || ''
           const jsonContent = JSON.stringify([{

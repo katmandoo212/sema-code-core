@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import Anthropic from '@anthropic-ai/sdk'
 
 /**
  * Sema 可扩展工具系统的核心工具接口
@@ -31,7 +32,7 @@ export interface Tool<
     agentContext: any, // AgentContext from Conversation.ts
   ) => Promise<ValidationResult>
 
-  genResultForAssistant: (output: TOutput) => string
+  genResultForAssistant: (output: TOutput) => Anthropic.ToolResultBlockParam['content']
 
   genToolPermission?: (
     input: z.infer<TInput>,
@@ -46,7 +47,7 @@ export interface Tool<
     input: z.infer<TInput>,
     agentContext: any, 
   ) => AsyncGenerator<
-    { type: 'result'; data: TOutput; resultForAssistant?: string },
+    { type: 'result'; data: TOutput; resultForAssistant?: Anthropic.ToolResultBlockParam['content'] },
     void,
     unknown
   >
