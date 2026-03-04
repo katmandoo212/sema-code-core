@@ -83,8 +83,17 @@ export const NotebookEditTool = {
     }
   },
   genToolPermission(input) {
-    const title = getTitle(input)
+    const baseTitle = getTitle(input)
     const editMode = input.edit_mode ?? 'replace'
+
+    // 根据操作模式生成动词前缀
+    const verb =
+      editMode === 'insert' ? 'Create Cell' :
+      editMode === 'delete' ? 'Delete Cell' : 'Update Cell'
+
+    // 组合操作类型和文件信息
+    const title = `${verb} - ${baseTitle}`
+
     let oldSource = ''
     let newSource = input.new_source ?? ''
 
