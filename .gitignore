@@ -34,6 +34,8 @@ package-lock.json
 /wiki
 .claude/
 
+my-app
+
 # Temp/test files
 test-*.ts
 demo-*.ts
