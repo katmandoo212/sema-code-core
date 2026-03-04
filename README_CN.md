@@ -97,6 +97,8 @@ node quickstart.mjs
 
 <img src="./docs/images/mini-cli.png" alt="miniCli" />
 
+跨语言集成参考 [README.md](./example/README.md)
+
 ## 🛠️ 开发
 
 ```bash

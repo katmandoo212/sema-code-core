@@ -34,6 +34,8 @@ node quickstart.mjs
 
 <img src="images/mini-cli.png" alt="miniCli" />
 
+跨语言集成参考 [README.md](https://github.com/midea-ai/sema-code-core/blob/main/example/README.md)
+
 ## 关键概念
 
 | 概念 | 说明 | 文档 |

@@ -97,6 +97,8 @@ node quickstart.mjs
 
 <img src="./docs/images/mini-cli.png" alt="miniCli" />
 
+Cross-Language Integration Reference [README.md](./example/README.md)
+
 ## 🛠 Development
 
 ```bash
@@ -110,7 +112,6 @@ npm run build
 node test/addModel.test.js
 node test/miniCli.test.js
 ```
-
 
 <details>
 <summary><strong>ripgrep Cross-Platform Packaging (Mac/Win)</strong></summary>
