@@ -39,7 +39,9 @@ export const getTopicFromUserInput = memoize(
     }
 
     try {
-      const result = JSON.parse(content) as TopicResult
+      // 去掉可能存在的 markdown 代码块包裹（如 ```json ... ```）
+      const cleanContent = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+      const result = JSON.parse(cleanContent) as TopicResult
 
       // 验证返回的结果格式
       if (typeof result.isNewTopic !== 'boolean') {
