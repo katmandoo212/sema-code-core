@@ -78,33 +78,14 @@ export const getCommandSubcommandPrefix = memoize(
     command: string,
     abortSignal: AbortSignal,
   ): Promise<CommandSubcommandPrefixResult | null> => {
-    const subcommands = splitCommand(command)
-
-    const [fullCommandPrefix, ...subcommandPrefixesResults] = await Promise.all(
-      [
-        getCommandPrefix(command, abortSignal),
-        ...subcommands.map(async subcommand => ({
-          subcommand,
-          prefix: await getCommandPrefix(subcommand, abortSignal),
-        })),
-      ],
-    )
+    const fullCommandPrefix = await getCommandPrefix(command, abortSignal)
     if (!fullCommandPrefix) {
       return null
     }
-    const subcommandPrefixes = subcommandPrefixesResults.reduce(
-      (acc, { subcommand, prefix }) => {
-        if (prefix) {
-          acc.set(subcommand, prefix)
-        }
-        return acc
-      },
-      new Map<string, CommandPrefixResult>(),
-    )
 
     return {
       ...fullCommandPrefix,
-      subcommandPrefixes,
+      subcommandPrefixes: new Map<string, CommandPrefixResult>(),
     }
   },
   command => command, // 仅按命令进行memoize

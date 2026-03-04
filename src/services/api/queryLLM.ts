@@ -28,7 +28,8 @@ export async function queryLLM(
   tools: Tool[],
   modelPointer: ModelPointerType = 'main',
   disableChunkEvents: boolean = false,
-  suppressErrorEvents: boolean = false
+  disableErrorEvents: boolean = false,
+  disableThinking: boolean = false
 ): Promise<AssistantMessage> {
   const modelProfile = getModelManager().getModel(modelPointer)
 
@@ -40,7 +41,7 @@ export async function queryLLM(
     const coreConfig = getConfManager().getCoreConfig()
     const shouldUseCache = coreConfig?.enableLLMCache  // 默认不启用
     const shouldStream = coreConfig?.stream !== false  // 默认启用
-    const enableThinking = coreConfig?.thinking !== false;  // 默认启用
+    const enableThinking = !disableThinking && coreConfig?.thinking !== false;  // 默认启用
     const emitChunkEvents = !disableChunkEvents && shouldStream !== false;  // 默认启用
 
     if (shouldUseCache) {
@@ -91,7 +92,7 @@ export async function queryLLM(
 
     return result
   } catch (error) {
-    if (!suppressErrorEvents && error instanceof Error && error.name !== 'InterruptedException') {
+    if (!disableErrorEvents && error instanceof Error && error.name !== 'InterruptedException') {
       emitSessionError(error)
     }
     throw error
@@ -191,6 +192,7 @@ export async function queryQuick({
     [],
     'quick',
     true, // 禁用流式事件
-    true  // 禁用错误事件
+    true, // 禁用错误事件
+    true  // 禁用thinking
   )
 }
