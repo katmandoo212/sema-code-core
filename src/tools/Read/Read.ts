@@ -15,6 +15,7 @@ import { getStateManager } from '../../manager/StateManager'
 import { readNotebook, formatNotebookCells } from '../../util/notebook'
 import { NotebookCellData } from '../../types/notebook'
 import { logDebug, logWarn, logInfo } from '../../util/log'
+import { compressImage } from '../../util/imageCompress'
 
 const MAX_LINES_TO_RENDER = 5
 const MAX_OUTPUT_SIZE = 2 * 1024 * 1024 // 2MB in bytes
@@ -174,15 +175,40 @@ export const FileReadTool = {
     // 检测是否为图片文件
     const lowerExt = fileExtension.toLowerCase()
     if (IMAGE_EXTENSIONS.has(lowerExt)) {
-      const imageData = fs.readFileSync(fullFilePath).toString('base64')
+      const imageBuffer = fs.readFileSync(fullFilePath)
       const mediaType = IMAGE_MEDIA_TYPES[lowerExt]
+
+      let imageData: string
+      let finalMediaType: typeof mediaType
+
+      if (imageBuffer.length > MAX_OUTPUT_SIZE) {
+        if (mediaType === 'image/gif') {
+          throw new Error(formatFileSizeError(imageBuffer.length))
+        }
+        logWarn(`ReadTool: image size ${Math.round(imageBuffer.length / 1024)}KB exceeds limit ${Math.round(MAX_OUTPUT_SIZE / 1024)}KB, compressing...`)
+        let compressed: Awaited<ReturnType<typeof compressImage>>
+        try {
+          compressed = await compressImage(imageBuffer, mediaType, MAX_OUTPUT_SIZE)
+        } catch (e: any) {
+          throw new Error(formatFileSizeError(imageBuffer.length))
+        }
+        const compressedBytes = Math.ceil(compressed.data.length * 3 / 4)
+        if (compressedBytes > MAX_OUTPUT_SIZE) {
+          throw new Error(formatFileSizeError(compressedBytes))
+        }
+        imageData = compressed.data
+        finalMediaType = compressed.media_type
+      } else {
+        imageData = imageBuffer.toString('base64')
+        finalMediaType = mediaType
+      }
 
       const data = {
         type: 'image' as const,
         image: {
           filePath: file_path,
           data: imageData,
-          media_type: mediaType,
+          media_type: finalMediaType,
         },
       }
 
@@ -299,5 +325,10 @@ export const FileReadTool = {
     }
 >
 
+const formatSize = (bytes: number) =>
+  bytes > 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)}M`
+    : `${Math.round(bytes / 1024)}KB`
+
 const formatFileSizeError = (sizeInBytes: number) =>
-  `File content (${Math.round(sizeInBytes / 1024)}KB) exceeds maximum allowed size (${Math.round(MAX_OUTPUT_SIZE / 1024)}KB). Please use offset and limit parameters to read specific portions of the file, or use the GrepTool to search for specific content.`
+  `File content (${formatSize(sizeInBytes)}) exceeds maximum allowed size (${formatSize(MAX_OUTPUT_SIZE)}). Please use offset and limit parameters to read specific portions of the file, or use the GrepTool to search for specific content.`
