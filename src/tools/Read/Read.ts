@@ -17,7 +17,7 @@ import { NotebookCellData } from '../../types/notebook'
 import { logDebug, logWarn, logInfo } from '../../util/log'
 
 const MAX_LINES_TO_RENDER = 5
-const MAX_OUTPUT_SIZE = 0.25 * 1024 * 1024 // 0.25MB in bytes
+const MAX_OUTPUT_SIZE = 2 * 1024 * 1024 // 2MB in bytes
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
 const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = {
