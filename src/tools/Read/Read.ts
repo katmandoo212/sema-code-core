@@ -19,6 +19,7 @@ import { compressImage } from '../../util/imageCompress'
 
 const MAX_LINES_TO_RENDER = 5
 const MAX_OUTPUT_SIZE = 2 * 1024 * 1024 // 2MB in bytes
+export const PDF_NOT_SUPPORTED_MESSAGE = 'PDF files are not supported for direct reading. Please use the Bash tool with pdftotext command to read content page by page.'
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
 const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = {
@@ -146,6 +147,14 @@ export const FileReadTool = {
     const stats = fileCheck.stats!
     const fileSize = stats.size
 
+    // PDF files should be read via Bash tool with pdftotext
+    if (extname(fullFilePath).toLowerCase() === '.pdf') {
+      return {
+        result: false,
+        message: PDF_NOT_SUPPORTED_MESSAGE,
+      }
+    }
+
     // If file is too large and no offset/limit provided (skip check for images)
     const isImageFile = IMAGE_EXTENSIONS.has(extname(fullFilePath).toLowerCase())
     if (!isImageFile && fileSize > MAX_OUTPUT_SIZE && !offset && !limit) {
@@ -171,6 +180,11 @@ export const FileReadTool = {
 
     // 检测是否为 notebook 文件
     const fileExtension = extname(fullFilePath)
+
+    // PDF files are not supported for direct reading
+    if (fileExtension.toLowerCase() === '.pdf') {
+      throw new Error(PDF_NOT_SUPPORTED_MESSAGE)
+    }
 
     // 检测是否为图片文件
     const lowerExt = fileExtension.toLowerCase()

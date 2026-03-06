@@ -16,6 +16,7 @@ Usage:
 - Results are returned using cat -n format, with line numbers starting at 1
 - This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
 - This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool does NOT support reading PDF files (.pdf) directly. For PDF files, use the Bash tool with pdftotext command instead (e.g., pdftotext -f 1 -l 5 file.pdf -).
 - This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
 - You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
 - You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.

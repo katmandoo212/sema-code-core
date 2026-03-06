@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { normalizeFilePath } from './file'
 import { logWarn, logInfo } from './log'
 import { MAX_LINES_TO_READ } from '../tools/Read/prompt'
+import { PDF_NOT_SUPPORTED_MESSAGE } from '../tools/Read/Read'
 import { FileReferenceInfo } from '../types/index'
 import { getCwd } from './cwd'
 import * as fs from 'fs'
@@ -175,6 +176,15 @@ async function processSingleReference(
     // 检查是否为目录引用
     if (parsed.isDirectory) {
       return await processDirectoryReference(fullPath, agentContext)
+    }
+
+    // 检查是否为 PDF 文件
+    if (path.extname(fullPath).toLowerCase() === '.pdf') {
+      systemReminders.push({
+        type: 'text' as const,
+        text: `<system-reminder>\n${PDF_NOT_SUPPORTED_MESSAGE}\n</system-reminder>`
+      })
+      return { systemReminders, supplementaryInfo }
     }
 
     // 智能处理行数范围
