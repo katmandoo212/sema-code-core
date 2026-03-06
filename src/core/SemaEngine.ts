@@ -143,7 +143,9 @@ export class SemaEngine {
     const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
 
     // 后台异步执行话题检测，不阻塞主流程
-    this.detectTopicInBackground(originalInput || input);
+    if (!getConfManager().getCoreConfig()?.disableTopicDetection) {
+      this.detectTopicInBackground(originalInput || input);
+    }
 
     try {
       // 将用户输入保存到项目配置的 history

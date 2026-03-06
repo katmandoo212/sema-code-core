@@ -12,6 +12,7 @@ export interface SemaCoreConfig {
   enableLLMCache?: boolean;          // 是否开启LLM缓存，默认 否 建议只在重复测试时使用
   useTools?: string[] | null;        // 限定使用的工具 默认 null 使用所有工具
   agentMode?: 'Agent' | 'Plan' ;     // 默认 'Agent'
+  disableTopicDetection?: boolean;   // 是否禁用话题检测，默认 否
 }
 
 // 支持动态更新的核心配置字段
