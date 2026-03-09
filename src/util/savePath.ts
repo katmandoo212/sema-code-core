@@ -153,12 +153,31 @@ export function getEventDir(): string {
   return path.join(getSemaRootDir(), EVENT_DIR_PATH);
 }
 
+
+/**
+ * 获取 Claude 根目录路径
+ * 默认为 ~/.claude，可通过环境变量 CLAUDE_ROOT 自定义
+ * 跨平台兼容：Windows、macOS、Linux
+ */
+export function getClaudeRootDir(): string {
+  const customRoot = process.env.CLAUDE_ROOT;
+  if (customRoot) {
+    if (process.platform === 'win32') {
+      return normalizeFilePath(customRoot);
+    }
+    return path.resolve(customRoot);
+  }
+
+  return path.join(os.homedir(), '.claude');
+}
+
 /**
  * 获取全局 Agent.md 文件路径
- * 位于根目录下的 /.sema/AGENT.md
+ * 位于 ~/.claude/CLAUDE.md
+ * 跨平台兼容：os.homedir() + path.join() 自动适配 Windows、macOS、Linux
  */
 export function getGlobalAgentMdPath(): string {
-  return path.join(getSemaRootDir(), 'AGENT.md');
+  return path.join(getClaudeRootDir(), 'CLAUDE.md');
 }
 
 /**

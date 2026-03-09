@@ -229,10 +229,10 @@ export class SemaEngine {
 
     // 判断是否为首次查询（消息历史为空），添加首次查询的额外信息 todos\rules
     if (messageHistory.length === 0) {
-      // 添加 todos 信息
-      if (hasTodoWriteTool) {
-        reminders.push(...generateTodosReminders())
-      }
+      // 删除 todos 初始化信息
+      // if (hasTodoWriteTool) {
+      //   reminders.push(...generateTodosReminders())
+      // }
 
       // 添加 rules 信息
       reminders.push(...generateRulesReminders())
