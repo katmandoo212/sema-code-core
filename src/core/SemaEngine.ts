@@ -22,7 +22,7 @@ import { getMCPManager } from '../services/mcp/MCPManager';
 import { initAgentsManager } from '../services/agents/agentsManager';
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager';
 import { handleSystemCommand, tryHandleCustomCommand } from '../services/command/runCommand';
-import { loadCustomCommands } from '../services/plugins/customCommands';
+import { loadCustomCommands } from '../services/command/customCommands';
 
 
 /**

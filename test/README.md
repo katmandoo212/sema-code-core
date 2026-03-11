@@ -31,3 +31,9 @@ node test/tool/grep.test.js
 ```
 node test/mcp/mcpAdd.test.js
 ```
+
+市场插件管理：
+
+```
+node test/plugins/marketplace.test.js
+```

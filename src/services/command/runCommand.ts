@@ -4,7 +4,7 @@ import { getStateManager, MAIN_AGENT_ID } from '../../manager/StateManager';
 import { compactMessages } from '../../util/compact';
 import { CompactExecData } from '../../events/types';
 import { isInterruptedException } from '../../types/errors';
-import { getCachedCustomCommands, resolveArguments } from '../plugins/customCommands';
+import { getCachedCustomCommands, resolveArguments } from './customCommands';
 
 /**
  * 系统命令处理模块

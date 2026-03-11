@@ -8,8 +8,10 @@ import { fetchModels, testApiConnection } from '../services/api/apiUtil';
 import { getMCPManager, initMCPManager } from '../services/mcp/MCPManager';
 import { getSkillsInfo } from '../services/skill/skillRegistry';
 import { getAgentsInfo, addAgentConf } from '../services/agents/agentsManager';
-import { getCachedCustomCommands, reloadCustomCommands as reloadCustomCommandsImpl } from '../services/plugins/customCommands';
+import { getCachedCustomCommands, reloadCustomCommands as reloadCustomCommandsImpl } from '../services/command/customCommands';
 import { CustomCommand } from '../types/command';
+import { getPluginsManager } from '../services/plugins/pluginsManager';
+import { PluginScope, MarketplacePluginsInfo } from '../types/plugin';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -33,6 +35,7 @@ export class SemaCore {
       await Promise.all([
         initMCPManager()
       ]);
+      getPluginsManager(); // 触发单例初始化，后台加载市场插件信息
     });
     logInfo(`初始化SemaCore: ${JSON.stringify(config, null, 2)}`)
   }
@@ -106,9 +109,23 @@ export class SemaCore {
   getCustomCommands = (): Promise<CustomCommand[]> => getCachedCustomCommands();
   reloadCustomCommands = (): void => reloadCustomCommandsImpl();
 
+  // ==================== 插件市场管理 ====================
+  addMarketplaceFromGit = (repo: string): Promise<MarketplacePluginsInfo> => getPluginsManager().addMarketplaceFromGit(repo);
+  addMarketplaceFromDirectory = (dirPath: string): Promise<MarketplacePluginsInfo> => getPluginsManager().addMarketplaceFromDirectory(dirPath);
+  updateMarketplace = (marketplaceName: string): Promise<MarketplacePluginsInfo> => getPluginsManager().updateMarketplace(marketplaceName);
+  removeMarketplace = (marketplaceName: string): Promise<MarketplacePluginsInfo> => getPluginsManager().removeMarketplace(marketplaceName);
+  installPlugin = (pluginName: string, marketplaceName: string, scope: PluginScope, projectPath?: string): Promise<MarketplacePluginsInfo> => getPluginsManager().installPlugin(pluginName, marketplaceName, scope, projectPath);
+  uninstallPlugin = (pluginName: string, marketplaceName: string, scope: PluginScope, projectPath?: string): Promise<MarketplacePluginsInfo> => getPluginsManager().uninstallPlugin(pluginName, marketplaceName, scope, projectPath);
+  enablePlugin = (pluginName: string, marketplaceName: string, scope: PluginScope, projectPath?: string): Promise<MarketplacePluginsInfo> => getPluginsManager().enablePlugin(pluginName, marketplaceName, scope, projectPath);
+  disablePlugin = (pluginName: string, marketplaceName: string, scope: PluginScope, projectPath?: string): Promise<MarketplacePluginsInfo> => getPluginsManager().disablePlugin(pluginName, marketplaceName, scope, projectPath);
+  updatePlugin = (pluginName: string, marketplaceName: string, scope: PluginScope, projectPath?: string): Promise<MarketplacePluginsInfo> => getPluginsManager().updatePlugin(pluginName, marketplaceName, scope, projectPath);
+  refreshMarketplacePluginsInfo = (): Promise<MarketplacePluginsInfo> => getPluginsManager().refreshMarketplacePluginsInfo();
+  getMarketplacePluginsInfo = (): Promise<MarketplacePluginsInfo> => getPluginsManager().getMarketplacePluginsInfo();
+
   // ==================== 资源管理 ====================
   dispose = async () => {
     await getMCPManager().dispose();
+    getPluginsManager().dispose();
     this.engine.dispose();
   };
 

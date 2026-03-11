@@ -139,3 +139,9 @@ export type {
 } from './agent';
 
 export { MAIN_AGENT_ID  } from '../manager/StateManager';
+
+// 导出 plugin 相关类型
+export type {
+  PluginScope,
+  MarketplacePluginsInfo
+} from './plugin';
