@@ -9,7 +9,7 @@ import * as fs from 'fs'
 import { promises as fsPromises } from 'fs'
 import * as path from 'path'
 import { logDebug, logError, logInfo, logWarn } from '../../util/log'
-import { getSemaRootDir } from '../../util/savePath'
+import { getSemaRootDir, getClaudeRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
 import { execFileNoThrow } from '../../util/exec'
 import type {
@@ -41,6 +41,9 @@ class PluginsManager {
   private knownMarketplacesFile: string // ~/.sema/plugins/known_marketplaces.json
   private installedPluginsFile: string  // ~/.sema/plugins/installed_plugins.json
 
+  private claudeRootDir: string         // ~/.claude
+  private claudePluginsBaseDir: string  // ~/.claude/plugins
+
   private marketplacePluginsInfoCache: MarketplacePluginsInfo | null = null
   private loadingPromise: Promise<MarketplacePluginsInfo> | null = null
 
@@ -51,6 +54,9 @@ class PluginsManager {
     this.cacheDir = path.join(this.pluginsBaseDir, 'cache')
     this.knownMarketplacesFile = path.join(this.pluginsBaseDir, 'known_marketplaces.json')
     this.installedPluginsFile = path.join(this.pluginsBaseDir, 'installed_plugins.json')
+
+    this.claudeRootDir = getClaudeRootDir()
+    this.claudePluginsBaseDir = path.join(this.claudeRootDir, 'plugins')
 
     // 后台静默加载市场插件信息
     this.loadingPromise = this.refreshMarketplacePluginsInfo()
@@ -188,7 +194,56 @@ class PluginsManager {
     }
   }
 
-  // ===================== TODO 工具函数（待实现）=====================
+  // ===================== Claude 只读辅助方法 =====================
+
+  private async readClaudeKnownMarketplaces(): Promise<KnownMarketplaces> {
+    try {
+      const file = path.join(this.claudePluginsBaseDir, 'known_marketplaces.json')
+      if (!fs.existsSync(file)) return {}
+      const content = await fsPromises.readFile(file, 'utf8')
+      return JSON.parse(content) as KnownMarketplaces
+    } catch (error) {
+      logError(`读取 Claude known_marketplaces.json 失败: ${error}`)
+      return {}
+    }
+  }
+
+  private async readClaudeInstalledPlugins(): Promise<InstalledPlugins> {
+    try {
+      const file = path.join(this.claudePluginsBaseDir, 'installed_plugins.json')
+      if (!fs.existsSync(file)) return { plugins: {} }
+      const content = await fsPromises.readFile(file, 'utf8')
+      return JSON.parse(content) as InstalledPlugins
+    } catch (error) {
+      logError(`读取 Claude installed_plugins.json 失败: ${error}`)
+      return { plugins: {} }
+    }
+  }
+
+  private getClaudeSettingsFilePath(scope: PluginScope, projectPath?: string): string {
+    const cwd = projectPath || getOriginalCwd()
+    switch (scope) {
+      case 'local':   return path.join(cwd, '.claude', 'settings.local.json')
+      case 'project': return path.join(cwd, '.claude', 'settings.json')
+      case 'user':    return path.join(this.claudeRootDir, 'settings.json')
+    }
+  }
+
+  private async loadClaudeEnabledPlugins(): Promise<Record<PluginScope, Record<string, boolean>>> {
+    const cwd = getOriginalCwd()
+    const [localSettings, projectSettings, userSettings] = await Promise.all([
+      this.readSettings(this.getClaudeSettingsFilePath('local', cwd)),
+      this.readSettings(this.getClaudeSettingsFilePath('project', cwd)),
+      this.readSettings(this.getClaudeSettingsFilePath('user'))
+    ])
+    return {
+      local: localSettings.enabledPlugins || {},
+      project: projectSettings.enabledPlugins || {},
+      user: userSettings.enabledPlugins || {}
+    }
+  }
+
+  // ===================== 工具函数 =====================
 
   /**
    * 通过 git clone 下载市场仓库
@@ -618,19 +673,14 @@ class PluginsManager {
   }
 
   /**
-   * 刷新市场插件信息
-   * 重新读取所有配置文件，更新缓存
+   * 根据 known/installed/enabled 数据构建市场插件结果
    */
-  async refreshMarketplacePluginsInfo(): Promise<MarketplacePluginsInfo> {
-    logDebug('刷新市场插件信息...')
-    this.invalidateCache()
-
-    const [known, installed, enabledPluginsMap] = await Promise.all([
-      this.readKnownMarketplaces(),
-      this.readInstalledPlugins(),
-      this.loadAllEnabledPlugins()
-    ])
-
+  private async buildMarketplaceResult(
+    known: KnownMarketplaces,
+    installed: InstalledPlugins,
+    enabledPluginsMap: Record<PluginScope, Record<string, boolean>>,
+    from: 'sema' | 'claude' = 'sema'
+  ): Promise<{ marketplaces: MarketplaceInfoResult[], plugins: PluginInfoResult[] }> {
     const marketplacesResult: MarketplaceInfoResult[] = []
     const pluginsResult: PluginInfoResult[] = []
 
@@ -667,7 +717,7 @@ class PluginsManager {
                 description: pluginDef.description || '',
                 author: pluginDef.author?.name || '',
                 components,
-                from: 'claude'
+                from
               })
             }
           }
@@ -689,17 +739,45 @@ class PluginsManager {
         lastUpdated: marketplaceInfo.lastUpdated?.split('T')[0] || '',
         available,
         installed: installedInMarket,
-        from: 'sema'
+        from
       })
     }
 
+    return { marketplaces: marketplacesResult, plugins: pluginsResult }
+  }
+
+  /**
+   * 刷新市场插件信息
+   * 重新读取所有配置文件，更新缓存（包含 Sema 和 Claude 两套来源）
+   */
+  async refreshMarketplacePluginsInfo(): Promise<MarketplacePluginsInfo> {
+    logDebug('刷新市场插件信息...')
+    this.invalidateCache()
+
+    const [
+      known, installed, enabledPluginsMap,
+      claudeKnown, claudeInstalled, claudeEnabledPluginsMap
+    ] = await Promise.all([
+      this.readKnownMarketplaces(),
+      this.readInstalledPlugins(),
+      this.loadAllEnabledPlugins(),
+      this.readClaudeKnownMarketplaces(),
+      this.readClaudeInstalledPlugins(),
+      this.loadClaudeEnabledPlugins()
+    ])
+
+    const [semaResult, claudeResult] = await Promise.all([
+      this.buildMarketplaceResult(known, installed, enabledPluginsMap, 'sema'),
+      this.buildMarketplaceResult(claudeKnown, claudeInstalled, claudeEnabledPluginsMap, 'claude')
+    ])
+
     const info: MarketplacePluginsInfo = {
-      marketplaces: marketplacesResult,
-      plugins: pluginsResult
+      marketplaces: [...semaResult.marketplaces, ...claudeResult.marketplaces],
+      plugins: [...semaResult.plugins, ...claudeResult.plugins]
     }
 
     this.marketplacePluginsInfoCache = info
-    logInfo(`市场插件信息刷新完成: ${marketplacesResult.length} 个市场, ${pluginsResult.length} 个插件`)
+    logInfo(`市场插件信息刷新完成: ${info.marketplaces.length} 个市场, ${info.plugins.length} 个插件`)
     return info
   }
 
