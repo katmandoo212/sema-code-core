@@ -1,22 +1,16 @@
 import type { Tool } from '../tools/base/Tool'
 
-export type AgentLocate = 'user' | 'project' | 'builtin'
+export type AgentScope = 'user' | 'project' | 'builtin'
 
 export interface AgentConfig {
   name: string
   description: string
-  tools?: string[] | '*'
+  tools: string[] | '*'  // 默认 '*' 
+  model: string  // haiku quick 对应 quick ，其他值均对应 main
   prompt: string
-  model?: string  // main quick ， 默认main
-  locate?: AgentLocate
-}
-
-export interface AgentInfo {
-  name: string
-  description: string
-  tools?: string[] | '*'
-  model?: string  // main quick ， 默认main
-  locate: AgentLocate
+  locate?: AgentScope
+  from?: string
+  filePath?: string
 }
 
 /**

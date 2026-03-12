@@ -2,16 +2,16 @@ import { SemaCoreConfig, ModelConfig, TaskConfig, FetchModelsParams, FetchModels
 import { ToolInfo } from '../types/index';
 import { MCPServerConfig, MCPScopeType, MCPServerInfo } from '../types/mcp';
 import { SkillInfo } from '../types/skill';
-import { AgentInfo, AgentConfig } from '../types/agent';
 import { ToolPermissionResponse, AskQuestionResponseData, PlanExitResponseData } from '../events/types';
 import { fetchModels, testApiConnection } from '../services/api/apiUtil';
 import { getMCPManager, initMCPManager } from '../services/mcp/MCPManager';
 import { getSkillsInfo } from '../services/skill/skillRegistry';
-import { getAgentsInfo, addAgentConf } from '../services/agents/agentsManager';
 import { getCachedCustomCommands, reloadCustomCommands as reloadCustomCommandsImpl } from '../services/command/customCommands';
 import { CustomCommand } from '../types/command';
 import { getPluginsManager } from '../services/plugins/pluginsManager';
 import { PluginScope, MarketplacePluginsInfo } from '../types/plugin';
+import { getAgentsManager } from '../services/agents/agentsManager';
+import { AgentConfig, AgentScope } from '../types/agent';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -101,10 +101,6 @@ export class SemaCore {
   // ==================== Skill 管理 ====================
   getSkillsInfo = (): SkillInfo[] => getSkillsInfo();
 
-  // ==================== Agents 管理 ====================
-  getAgentsInfo = (): AgentInfo[] => getAgentsInfo();
-  addAgentConf = (agentConf: AgentConfig): Promise<boolean> => addAgentConf(agentConf);
-
   // ==================== Custom Commands 管理 ====================
   getCustomCommands = (): Promise<CustomCommand[]> => getCachedCustomCommands();
   reloadCustomCommands = (): void => reloadCustomCommandsImpl();
@@ -121,6 +117,12 @@ export class SemaCore {
   updatePlugin = (pluginName: string, marketplaceName: string, scope: PluginScope, projectPath?: string): Promise<MarketplacePluginsInfo> => getPluginsManager().updatePlugin(pluginName, marketplaceName, scope, projectPath);
   refreshMarketplacePluginsInfo = (): Promise<MarketplacePluginsInfo> => getPluginsManager().refreshMarketplacePluginsInfo();
   getMarketplacePluginsInfo = (): Promise<MarketplacePluginsInfo> => getPluginsManager().getMarketplacePluginsInfo();
+
+  // ==================== Agents 管理 ====================
+  getAgentsInfo = (): Promise<AgentConfig[]> => getAgentsManager().getAgentsInfo();
+  refreshAgentsInfo = (): Promise<AgentConfig[]> => getAgentsManager().refreshAgentsInfo();
+  addAgentConf = (agentConf: AgentConfig): Promise<AgentConfig[]> => getAgentsManager().addAgentConf(agentConf);
+  removeAgentConf = (name: string): Promise<AgentConfig[]> => getAgentsManager().removeAgentConf(name);
 
   // ==================== 资源管理 ====================
   dispose = async () => {

@@ -59,7 +59,7 @@ export const TaskTool = {
 
     try {
       // 1. 查找对应的 AgentConfig
-      const AgentsConfs = getAgentsManager().getAgentsConfs()
+      const AgentsConfs = await getAgentsManager().getAgentsInfo()
       const agentConfig = AgentsConfs.find(
         agent => agent.name.toLowerCase() === subagent_type.toLowerCase()
       )
@@ -135,7 +135,7 @@ export const TaskTool = {
         agentId: taskId,
         abortController: sharedAbortController,
         tools: subagentTools,
-        model: agentConfig.model === 'quick' ? 'quick' : 'main'
+        model: (agentConfig.model === 'quick' || agentConfig.model === 'haiku') ? 'quick' : 'main'
       }
 
       // 8. 执行子代理查询

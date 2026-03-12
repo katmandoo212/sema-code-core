@@ -134,8 +134,7 @@ export type {
 // 导出 agent 相关类型
 export type {
   AgentConfig,
-  AgentInfo,
-  AgentLocate
+  AgentScope
 } from './agent';
 
 export { MAIN_AGENT_ID  } from '../manager/StateManager';

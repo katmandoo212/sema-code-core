@@ -19,7 +19,6 @@ import { query } from './Conversation';
 import type { AgentContext } from '../types/agent'
 import { initializeSkillRegistry, clearSkillRegistry } from '../services/skill/skillRegistry';
 import { getMCPManager } from '../services/mcp/MCPManager';
-import { initAgentsManager } from '../services/agents/agentsManager';
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager';
 import { handleSystemCommand, tryHandleCustomCommand } from '../services/command/runCommand';
 import { loadCustomCommands } from '../services/command/customCommands';
@@ -42,9 +41,6 @@ export class SemaEngine {
   async createSession(sessionId?: string): Promise<void> {
     // 中止当前正在进行的请求（如果存在）
     this.abortCurrentRequest();
-
-    // 启动 Agents 初始化（不阻塞后续逻辑，但在 updateState('idle') 前需要完成）
-    const agentsInitPromise = initAgentsManager();
 
     // 清空所有状态
     const stateManager = getStateManager();
@@ -80,9 +76,6 @@ export class SemaEngine {
       projectInputHistory: projectInputHistory,
       usage: usage
     };
-
-    // 等待 Agents 初始化完成后再设置 idle 状态
-    await agentsInitPromise;
 
     logInfo(`新会话创建完成，sessionId: ${stateManager.getSessionId()}`);
     this.emit('session:ready', sessionData);

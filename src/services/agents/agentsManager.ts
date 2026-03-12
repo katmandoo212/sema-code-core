@@ -2,68 +2,90 @@
  * Agents 管理器
  *
  * 管理自定义 Agent 的全局注册和查找
- * 实现优先级：项目级 > 用户级 > 内置
+ * 实现优先级：内置 < 用户级 < 项目级 (后加载的覆盖先加载的)
+ * 兼容 Claude Code 和 Sema 两套路径（Claude 只读）
  */
 
 import * as fs from 'fs'
 import { promises as fsPromises } from 'fs'
 import * as path from 'path'
-import { AgentConfig, AgentInfo } from '../../types/agent'
+import { AgentConfig, AgentScope } from '../../types/agent'
 import { logDebug, logError, logInfo, logWarn } from '../../util/log'
-import { getSemaRootDir } from '../../util/savePath'
+import { getSemaRootDir, getClaudeRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
-import { extractFrontmatter, parseFrontmatter } from '../../util/frontmatter'
+import { parseFile } from '../../util/formatter'
 import { defaultBuiltInAgentsConfs } from './defaultBuiltInAgentsConfs'
-
-/**
- * Agent 文件缓存项
- */
-interface AgentFileCache {
-  mtime: number
-  config: AgentConfig
-}
 
 /**
  * Agents 管理器类 - 单例模式
  */
 class AgentsManager {
-  private userAgentsDir: string
-  private projectAgentsDir: string
-  private agentConfigs: Map<string, AgentConfig> = new Map()
-  // 文件缓存：记录每个文件的修改时间和解析结果
-  private fileCache: Map<string, AgentFileCache> = new Map()
-  // AgentConfigs 数组缓存
-  private agentConfigsArrayCache: AgentConfig[] | null = null
+  private semaRootDir: string           // ~/.sema
+  private semaUserAgentsDir: string     // ~/.sema/agents
+  private semaProjectAgentsDir: string  // <project>/.sema/agents
 
-  constructor(userAgentsDir: string, projectAgentsDir: string) {
-    this.userAgentsDir = userAgentsDir
-    this.projectAgentsDir = projectAgentsDir
+  private claudeRootDir: string          // ~/.claude
+  private claudeUserAgentsDir: string    // ~/.claude/agents
+  private claudeProjectAgentsDir: string // <project>/.claude/agents
+
+  private agentConfigs: Map<string, AgentConfig> = new Map()
+  // Agents 信息缓存
+  private agentInfoCache: AgentConfig[] | null = null
+  // 后台加载 Promise
+  private loadingPromise: Promise<AgentConfig[]> | null = null
+
+  constructor() {
+    // 初始化所有路径
+    this.semaRootDir = getSemaRootDir()
+    this.semaUserAgentsDir = path.join(this.semaRootDir, 'agents')
+
+    this.claudeRootDir = getClaudeRootDir()
+    this.claudeUserAgentsDir = path.join(this.claudeRootDir, 'agents')
+
+    const cwd = getOriginalCwd()
+    this.semaProjectAgentsDir = path.join(cwd, '.sema', 'agents')
+    this.claudeProjectAgentsDir = path.join(cwd, '.claude', 'agents')
+
+    // 后台静默加载 agents 信息
+    this.loadingPromise = this.refreshAgentsInfo()
+      .catch(err => {
+        logError(`后台加载 Agents 信息失败: ${err}`)
+        return [] as AgentConfig[]
+      })
+      .finally(() => { this.loadingPromise = null })
   }
 
   /**
-   * 使数组缓存失效
+   * 清空缓存
    */
   private invalidateCache(): void {
-    this.agentConfigsArrayCache = null
+    this.agentInfoCache = null
   }
 
   /**
-   * 初始化 Agents 配置（异步）
-   * 按优先级加载：内置 -> 用户级 -> 项目级
+   * 加载 Agents 配置（内部方法）
+   * 按优先级加载：用户级(Claude) -> 项目级(Claude) -> 内置 -> 用户级(Sema) -> 项目级(Sema)
+   * 后加载的覆盖先加载的，优先级从高到低：项目级(Sema) > 用户级(Sema) > 内置 > 项目级(Claude) > 用户级(Claude)
    */
-  async init(): Promise<void> {
-    // 清空现有配置（保留文件缓存）
+  private async loadAgents(): Promise<void> {
+    // 清空现有配置
     this.agentConfigs.clear()
-    this.invalidateCache()
 
-    // 1. 加载内置 agents（最低优先级）
+    // 按优先级顺序加载（后加载的覆盖先加载的）
+    // 1. 用户级(Claude) - 最低优先级
+    await this.loadAgentsFromDir(this.claudeUserAgentsDir, 'user', 'claude')
+
+    // 2. 项目级(Claude)
+    await this.loadAgentsFromDir(this.claudeProjectAgentsDir, 'project', 'claude')
+
+    // 3. 内置 agents
     this.loadBuiltInAgents()
 
-    // 2. 并行加载用户级和项目级 agents
-    await Promise.all([
-      this.loadAgentsFromDir(this.userAgentsDir, 'user'),
-      this.loadAgentsFromDir(this.projectAgentsDir, 'project')
-    ])
+    // 4. 用户级(Sema)
+    await this.loadAgentsFromDir(this.semaUserAgentsDir, 'user', 'sema')
+
+    // 5. 项目级(Sema) - 最高优先级
+    await this.loadAgentsFromDir(this.semaProjectAgentsDir, 'project', 'sema')
 
     const agentNames = Array.from(this.agentConfigs.keys()).join(', ')
     logInfo(`加载 Agents 配置: ${agentNames}`)
@@ -74,15 +96,22 @@ class AgentsManager {
    */
   private loadBuiltInAgents(): void {
     for (const config of defaultBuiltInAgentsConfs) {
-      this.agentConfigs.set(config.name, { ...config, locate: 'builtin' })
+      // 为内置配置补充默认字段，确保类型完整
+      const fullConfig: AgentConfig = {
+        ...config,
+        locate: "builtin",
+        from: "sema"
+      }
+      this.agentConfigs.set(config.name, fullConfig)
     }
     logDebug(`加载内置 Agents: ${defaultBuiltInAgentsConfs.length} 个`)
   }
 
   /**
-   * 从指定目录加载 agent 配置（异步，支持缓存）
+   * 从指定目录加载 agent 配置
+   * Claude 来源为只读
    */
-  private async loadAgentsFromDir(dirPath: string, scope: 'user' | 'project'): Promise<void> {
+  private async loadAgentsFromDir(dirPath: string, scope: 'user' | 'project', from: 'sema' | 'claude'): Promise<void> {
     try {
       if (!fs.existsSync(dirPath)) {
         logDebug(`Agents 目录不存在: ${dirPath}`)
@@ -105,89 +134,71 @@ class AgentsManager {
         if (agentConfig) {
           // 如果已存在同名 agent，记录覆盖日志
           if (this.agentConfigs.has(agentConfig.name)) {
-            logWarn(`Agent [${agentConfig.name}] 被 ${scope} 级配置覆盖`)
+            logDebug(`Agent [${agentConfig.name}] 被 ${from} ${scope} 级配置覆盖`)
           }
-          this.agentConfigs.set(agentConfig.name, { ...agentConfig, locate: locateValue })
+          this.agentConfigs.set(agentConfig.name, { ...agentConfig, locate: locateValue, from })
           loadedCount++
         }
       }
 
       if (loadedCount > 0) {
-        logDebug(`加载 ${scope} 级 Agents: ${loadedCount} 个`)
+        logDebug(`加载 ${from} ${scope} 级 Agents: ${loadedCount} 个`)
       }
     } catch (error) {
-      logError(`加载 ${scope} 级 Agents 失败 [${dirPath}]: ${error}`)
+      logError(`加载 ${from} ${scope} 级 Agents 失败 [${dirPath}]: ${error}`)
     }
   }
 
   /**
-   * 解析 Agent Markdown 文件（异步，支持缓存）
-   * 格式：
-   * ---
-   * name: agent-name
-   * description: "agent description"
-   * tools: Glob, Grep, Read
-   * model: haiku
-   * ---
-   *
-   * Agent prompt content here...
+   * 解析 Agent Markdown 文件
+   * 使用 parseClaudeFile 统一解析 frontmatter
    */
   private async parseAgentFile(filePath: string): Promise<AgentConfig | null> {
     try {
-      // 检查缓存
-      const stats = await fsPromises.stat(filePath)
-      const cached = this.fileCache.get(filePath)
+      // 解析文件
+      const { metadata, prompt } = parseFile(filePath)
 
-      if (cached && cached.mtime === stats.mtimeMs) {
-        // 缓存命中，直接返回
-        return cached.config
-      }
+      // 验证必需字段：name、description、prompt 必须是非空字符串
+      const name = typeof metadata.name === 'string' ? metadata.name.trim() : ''
+      const description = typeof metadata.description === 'string' ? metadata.description.trim() : ''
+      const promptStr = prompt.trim()
 
-      // 缓存未命中，异步读取文件
-      const content = await fsPromises.readFile(filePath, 'utf8')
-
-      // 提取 frontmatter
-      const extracted = extractFrontmatter(content)
-      if (!extracted) {
-        logWarn(`Agent 文件格式错误 [${filePath}]: 缺少 frontmatter`)
+      if (!name || !description || !promptStr) {
+        logWarn(`Agent 文件格式错误 [${filePath}]: name/description/prompt 必须为非空字符串`)
         return null
       }
 
-      const [frontmatterText, prompt] = extracted
-
-      // 解析 frontmatter
-      const metadata = parseFrontmatter(frontmatterText)
-
-      // 验证必需字段
-      if (!metadata.name || !metadata.description) {
-        logWarn(`Agent 文件格式错误 [${filePath}]: 缺少必需字段 name 或 description`)
-        return null
-      }
-
-      // 解析 tools 字段
-      let tools: string[] | '*' | undefined
+      // 解析 tools 字段，默认 '*'
+      let tools: string[] | '*' = '*'
       if (metadata.tools) {
         const toolsValue = metadata.tools
-        if (toolsValue === '*') {
+        if (toolsValue === '*' || toolsValue === '"*"') {
           tools = '*'
         } else if (typeof toolsValue === 'string') {
           // 支持逗号分隔的字符串格式
-          tools = toolsValue.split(',').map((t: string) => t.trim()).filter((t: string) => t)
-        } else if (Array.isArray(toolsValue)) {
+          const parsed = toolsValue.split(',').map((t: string) => t.trim()).filter((t: string) => t)
+          if (parsed.length > 0) {
+            tools = parsed
+          }
+        } else if (Array.isArray(toolsValue) && toolsValue.length > 0) {
           tools = toolsValue
         }
       }
 
-      const agentConfig: AgentConfig = {
-        name: metadata.name as string,
-        description: metadata.description as string,
-        tools,
-        model: metadata.model as string | undefined,
-        prompt
-      }
+      // model 只取字符串类型，非字符串忽略，回退默认值 'haiku'
+      const model = typeof metadata.model === 'string' && metadata.model.trim()
+        ? metadata.model.trim()
+        : 'haiku'
 
-      // 更新缓存
-      this.fileCache.set(filePath, { mtime: stats.mtimeMs, config: agentConfig })
+      // 构造完整的 AgentConfig
+      const agentConfig: AgentConfig = {
+        name,
+        description,
+        tools,
+        model,
+        prompt: promptStr,
+        filePath
+      }
 
       return agentConfig
     } catch (error) {
@@ -197,26 +208,49 @@ class AgentsManager {
   }
 
   /**
-   * 获取所有 Agent 配置（带缓存）
+   * 获取所有 Agent 配置
    */
-  getAgentsConfs(): AgentConfig[] {
-    if (!this.agentConfigsArrayCache) {
-      this.agentConfigsArrayCache = Array.from(this.agentConfigs.values())
-    }
-    return this.agentConfigsArrayCache
+  private getAgentsConfs(): AgentConfig[] {
+    return Array.from(this.agentConfigs.values())
   }
 
   /**
-   * 获取所有 Agent 信息
+   * 获取所有 Agent 信息（有缓存则直接返回，否则等待后台加载或重新加载）
    */
-  getAgentsInfo(): AgentInfo[] {
-    return this.getAgentsConfs().map(config => ({
+  async getAgentsInfo(): Promise<AgentConfig[]> {
+    if (this.agentInfoCache) {
+      return this.agentInfoCache
+    }
+    if (this.loadingPromise) {
+      return this.loadingPromise
+    }
+    return this.refreshAgentsInfo()
+  }
+
+  /**
+   * 刷新 Agents 信息
+   * 重新加载所有配置，更新缓存
+   */
+  async refreshAgentsInfo(): Promise<AgentConfig[]> {
+    logDebug('刷新 Agents 信息...')
+    this.invalidateCache()
+
+    await this.loadAgents()
+
+    const agentInfos = this.getAgentsConfs().map(config => ({
       name: config.name,
       description: config.description,
       tools: config.tools,
       model: config.model,
-      locate: config.locate ?? 'builtin'
+      prompt: config.prompt,
+      locate: config.locate as AgentScope,
+      from: config.from,
+      filePath: config.filePath
     }))
+
+    this.agentInfoCache = agentInfos
+    logInfo(`Agents 信息刷新完成: ${agentInfos.length} 个 Agent`)
+    return agentInfos
   }
 
   /**
@@ -245,7 +279,7 @@ class AgentsManager {
    */
   private async saveAgentToFile(agentConf: AgentConfig): Promise<boolean> {
     try {
-      const targetDir = agentConf.locate === 'user' ? this.userAgentsDir : this.projectAgentsDir
+      const targetDir = agentConf.locate === 'user' ? this.semaUserAgentsDir : this.semaProjectAgentsDir
 
       if (!fs.existsSync(targetDir)) {
         await fsPromises.mkdir(targetDir, { recursive: true })
@@ -254,9 +288,6 @@ class AgentsManager {
       const filePath = path.join(targetDir, `${agentConf.name}.md`)
       const content = this.generateAgentFileContent(agentConf)
       await fsPromises.writeFile(filePath, content, 'utf8')
-
-      const stats = await fsPromises.stat(filePath)
-      this.fileCache.set(filePath, { mtime: stats.mtimeMs, config: agentConf })
 
       logInfo(`Agent 配置已保存到文件: ${filePath}`)
       return true
@@ -307,16 +338,17 @@ class AgentsManager {
 
   /**
    * 添加 Agent 配置
+   * 只能添加到 Sema 路径（Claude 为只读）
    */
-  async addAgentConf(agentConf: AgentConfig): Promise<boolean> {
-    if (!agentConf.name || !agentConf.description) {
-      logWarn(`添加 Agent 失败: 缺少必需字段 name 或 description`)
-      return false
+  async addAgentConf(agentConf: AgentConfig): Promise<AgentConfig[]> {
+    if (!agentConf.name || !agentConf.description || !agentConf.prompt) {
+      logWarn(`添加 Agent 失败: 缺少必需字段 name、prompt 或 description`)
+      return this.getAgentsInfo()
     }
 
     if (!agentConf.locate || (agentConf.locate !== 'project' && agentConf.locate !== 'user')) {
       logWarn(`添加 Agent 失败: locate 必须为 'project' 或 'user'`)
-      return false
+      return this.getAgentsInfo()
     }
 
     // 如果已存在同名 agent，记录覆盖日志
@@ -333,7 +365,47 @@ class AgentsManager {
       logWarn(`Agent 配置已添加到内存，但保存到文件失败: ${agentConf.name}`)
     }
 
-    return true
+    return this.refreshAgentsInfo()
+  }
+
+  /**
+   * 移除 Agent 配置
+   * Claude 来源为只读，不可移除
+   */
+  async removeAgentConf(name: string): Promise<AgentConfig[]> {
+    const agentConf = this.agentConfigs.get(name)
+    if (!agentConf) {
+      logWarn(`移除 Agent 失败: 未找到 [${name}]`)
+      return this.getAgentsInfo()
+    }
+
+    if (agentConf.from === 'claude') {
+      logWarn(`移除 Agent 失败: Claude 来源为只读 [${name}]`)
+      return this.getAgentsInfo()
+    }
+
+    if (agentConf.locate === 'builtin') {
+      logWarn(`移除 Agent 失败: 内置 Agent 不可移除 [${name}]`)
+      return this.getAgentsInfo()
+    }
+
+    this.agentConfigs.delete(name)
+    this.invalidateCache()
+
+    // 删除文件
+    const targetDir = agentConf.locate === 'user' ? this.semaUserAgentsDir : this.semaProjectAgentsDir
+    const filePath = path.join(targetDir, `${name}.md`)
+    try {
+      if (fs.existsSync(filePath)) {
+        await fsPromises.unlink(filePath)
+        logInfo(`Agent 配置文件已删除: ${filePath}`)
+      }
+    } catch (error) {
+      logError(`删除 Agent 配置文件失败 [${filePath}]: ${error}`)
+    }
+
+    logInfo(`移除 Agent 配置: ${name}`)
+    return this.refreshAgentsInfo()
   }
 
   /**
@@ -341,7 +413,6 @@ class AgentsManager {
    */
   dispose(): void {
     this.agentConfigs.clear()
-    this.fileCache.clear()
     this.invalidateCache()
   }
 }
@@ -355,61 +426,13 @@ let agentsManagerInstance: AgentsManager | null = null
  */
 export function getAgentsManager(): AgentsManager {
   if (!agentsManagerInstance) {
-    const userAgentsDir = path.join(getSemaRootDir(), 'agents')
-    const projectAgentsDir = path.join(getOriginalCwd(), '.sema', 'agents')
-
-    agentsManagerInstance = new AgentsManager(userAgentsDir, projectAgentsDir)
+    agentsManagerInstance = new AgentsManager()
   }
   return agentsManagerInstance
 }
 
-/**
- * 初始化 Agents Manager（异步）
- */
-export async function initAgentsManager(): Promise<void> {
-  const manager = getAgentsManager()
-  await manager.init()
-}
-
-/**
- * 获取所有 Agent 配置
- */
-export function getAgentsConfs(): AgentConfig[] {
-  const manager = getAgentsManager()
-  return manager.getAgentsConfs()
-}
-
-/**
- * 获取所有 Agent 信息
- */
-export function getAgentsInfo(): AgentInfo[] {
-  const manager = getAgentsManager()
-  return manager.getAgentsInfo()
-}
-
-/**
- * 根据名称获取 Agent 配置
- */
-export function getAgentConfig(name: string): AgentConfig | undefined {
-  const manager = getAgentsManager()
-  return manager.getAgentConfig(name)
-}
-
-/**
- * 添加 Agent 配置
- */
-export async function addAgentConf(agentConf: AgentConfig): Promise<boolean> {
-  const manager = getAgentsManager()
-  return await manager.addAgentConf(agentConf)
+export function getAgentTypesDescription(): string {
+  return getAgentsManager().getAgentTypesDescription()
 }
 
 export { AgentsManager }
-
-/**
- * 获取所有子代理的类型描述（用于 Task 工具的 prompt）
- * 格式: "- AgentName: description"
- */
-export function getAgentTypesDescription(): string {
-  const manager = getAgentsManager()
-  return manager.getAgentTypesDescription()
-}

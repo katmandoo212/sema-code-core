@@ -37,3 +37,9 @@ node test/mcp/mcpAdd.test.js
 ```
 node test/plugins/marketplace.test.js
 ```
+
+子代理管理：
+
+```
+node test/agent/agent.test.js
+```

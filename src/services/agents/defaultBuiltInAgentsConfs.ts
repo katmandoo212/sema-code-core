@@ -46,6 +46,7 @@ Complete the user's search request efficiently and report your findings clearly.
         "name": "Plan",
         "description": `Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs. (Tools: All tools)`,
         "tools": ['Bash', 'Glob', 'Grep', 'Read', 'TodoWrite'],
+        "model": "main",
         "prompt": `You are a software architect and planning specialist for Claude Code. Your role is to explore the codebase and design implementation plans.
 
 === CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS ===
