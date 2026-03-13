@@ -6,6 +6,7 @@ import { isAbsolute, resolve, join } from 'path'
 import * as os from 'os'
 import * as crypto from 'crypto'
 import { logError, logInfo, logWarn } from './log'
+import { IS_WIN, nativeToShellPath, splitPathEntries } from './platform'
 
 // 执行结果类型定义
 type ExecResult = {
@@ -56,81 +57,9 @@ function quoteForBash(str: string): string {
   return `'${str.replace(/'/g, "'\\''")}'`
 }
 
-// 将路径转换为Bash可识别的格式
-function toBashPath(pathStr: string, type: 'posix' | 'msys' | 'wsl'): string {
-  // 已经是POSIX绝对路径
-  if (pathStr.startsWith('/')) return pathStr
-  if (type === 'posix') return pathStr
-
-  // 规范化反斜杠
-  const normalized = pathStr.replace(/\\/g, '/').replace(/\\\\/g, '/')
-  const driveMatch = /^[A-Za-z]:/.exec(normalized)
-  if (driveMatch) {
-    const drive = normalized[0].toLowerCase()
-    const rest = normalized.slice(2)
-    if (type === 'msys') {
-      return `/` + drive + (rest.startsWith('/') ? rest : `/${rest}`)
-    }
-    // wsl格式转换
-    return `/mnt/` + drive + (rest.startsWith('/') ? rest : `/${rest}`)
-  }
-  // 相对路径：只转换斜杠
-  return normalized
-}
-
 // 检查文件是否存在
 function fileExists(p: string | undefined): p is string {
   return !!p && existsSync(p)
-}
-
-// 跨平台的PATH环境变量分割器
-function splitPathEntries(pathEnv: string, platform: NodeJS.Platform): string[] {
-  if (!pathEnv) return []
-
-  // POSIX系统使用':'作为分隔符
-  if (platform !== 'win32') {
-    return pathEnv
-      .split(':')
-      .map(s => s.trim().replace(/^"|"$/g, ''))
-      .filter(Boolean)
-  }
-
-  // Windows系统：主要使用';'，但某些环境可能使用':'
-  // 注意不要分割驱动器字母如'C:\\'或'D:foo\\bar'
-  const entries: string[] = []
-  let current = ''
-  const pushCurrent = () => {
-    const cleaned = current.trim().replace(/^"|"$/g, '')
-    if (cleaned) entries.push(cleaned)
-    current = ''
-  }
-
-  for (let i = 0; i < pathEnv.length; i++) {
-    const ch = pathEnv[i]
-
-    if (ch === ';') {
-      pushCurrent()
-      continue
-    }
-
-    if (ch === ':') {
-      const segmentLength = current.length
-      const firstChar = current[0]
-      const isDriveLetterPrefix = segmentLength === 1 && /[A-Za-z]/.test(firstChar || '')
-      // 只有当不是驱动器字母后的冒号时才作为分隔符处理
-      if (!isDriveLetterPrefix) {
-        pushCurrent()
-        continue
-      }
-    }
-
-    current += ch
-  }
-
-  // 处理最后一个段
-  pushCurrent()
-
-  return entries
 }
 
 // 测试 bash 是否可用
@@ -140,8 +69,8 @@ function testBashAvailability(bashPath: string, type: 'msys' | 'wsl' = 'msys'): 
 
     let testCommand: string
     if (type === 'wsl') {
-      // WSL bash 测试
-      testCommand = `${bashPath} -e bash -c "echo SEMA_TEST_OK"`
+      // WSL bash 测试（System32\bash.exe 直接支持 -c）
+      testCommand = `"${bashPath}" -c "echo SEMA_TEST_OK"`
     } else {
       // 普通 bash 测试
       testCommand = `"${bashPath}" -c "echo SEMA_TEST_OK"`
@@ -167,10 +96,15 @@ function testBashAvailability(bashPath: string, type: 'msys' | 'wsl' = 'msys'): 
   }
 }
 
+// 判断路径是否为 Git Bash
+function isGitBashPath(p: string): boolean {
+  const lower = p.toLowerCase()
+  return lower.includes('git') || lower.includes('git for windows')
+}
+
 // 检测可用的Shell
 function detectShell(): DetectedShell {
-  const isWin = process.platform === 'win32'
-  if (!isWin) {
+  if (!IS_WIN) {
     const bin = process.env.SHELL || '/bin/bash'
     return { bin, args: ['-l'], type: 'posix' }
   }
@@ -220,8 +154,7 @@ function detectShell(): DetectedShell {
     }
   }
 
-  // 在Windows上，如果PATH看起来不完整，尝试从系统重新获取
-  if (process.platform === 'win32' && pathEnv && pathEnv.length < 500) {
+  if (IS_WIN && pathEnv && pathEnv.length < 500) {
     try {
       logInfo('PATH看起来不完整，尝试从PowerShell重新获取...')
       const fullPath = execSync('powershell.exe -Command "$env:PATH"', {
@@ -238,7 +171,7 @@ function detectShell(): DetectedShell {
   }
 
   logInfo(`PATH 环境变量内容: ${pathEnv ? pathEnv.substring(0, 200) + '...' : '(空)'}`)
-  const pathEntries = splitPathEntries(pathEnv, process.platform)
+  const pathEntries = splitPathEntries(pathEnv)
   logInfo(`解析出的 PATH 条目数量: ${pathEntries.length}`)
 
   // 打印前几个路径条目用于调试
@@ -253,11 +186,7 @@ function detectShell(): DetectedShell {
     logInfo(`检查路径: ${candidate}`)
     if (existsSync(candidate)) {
       // 检查是否为Git Bash路径 - 更宽泛的检测
-      const candidateLower = candidate.toLowerCase()
-      const isGitBash = candidateLower.includes('git') ||
-                       candidateLower.includes('\\git\\') ||
-                       candidateLower.includes('/git/') ||
-                       candidateLower.includes('git for windows')
+      const isGitBash = isGitBashPath(candidate)
       logInfo(`发现 bash.exe: ${candidate}, 是否Git Bash: ${isGitBash}`)
       if (isGitBash) {
         if (testBashAvailability(candidate, 'msys')) {
@@ -302,13 +231,8 @@ function detectShell(): DetectedShell {
   for (const p of pathEntries) {
     const candidate = join(p, 'bash.exe')
     if (existsSync(candidate)) {
-      // 跳过已经处理过的Git Bash - 使用相同的检测逻辑
-      const candidateLower = candidate.toLowerCase()
-      const isGitBash = candidateLower.includes('git') ||
-                       candidateLower.includes('\\git\\') ||
-                       candidateLower.includes('/git/') ||
-                       candidateLower.includes('git for windows')
-      if (!isGitBash) {
+      // 跳过已经处理过的Git Bash
+      if (!isGitBashPath(candidate)) {
         // 对所有找到的 bash 进行测试验证
         const isSystem32Bash = candidate.toLowerCase().includes('system32')
         const testType = isSystem32Bash ? 'wsl' : 'msys'
@@ -485,10 +409,7 @@ export class PersistentShell {
       },
     }
 
-    // Windows 特定选项
-    if (process.platform === 'win32') {
-      spawnOptions.windowsHide = true  // 隐藏控制台窗口
-    }
+    if (IS_WIN) spawnOptions.windowsHide = true
 
     this.shell = spawn(this.binShell, this.shellArgs, spawnOptions)
 
@@ -532,10 +453,10 @@ export class PersistentShell {
 
     // 计算Bash可见的重定向路径（仅对 bash Shell 需要）
     if (this.shellType === 'msys' || this.shellType === 'wsl' || this.shellType === 'posix') {
-      this.statusFileBashPath = toBashPath(this.statusFile, this.shellType)
-      this.stdoutFileBashPath = toBashPath(this.stdoutFile, this.shellType)
-      this.stderrFileBashPath = toBashPath(this.stderrFile, this.shellType)
-      this.cwdFileBashPath = toBashPath(this.cwdFile, this.shellType)
+      this.statusFileBashPath = nativeToShellPath(this.statusFile, this.shellType)
+      this.stdoutFileBashPath = nativeToShellPath(this.stdoutFile, this.shellType)
+      this.stderrFileBashPath = nativeToShellPath(this.stderrFile, this.shellType)
+      this.cwdFileBashPath = nativeToShellPath(this.cwdFile, this.shellType)
 
       // 如果存在~/.bashrc则加载（适用于bash在POSIX/MSYS/WSL上）
       this.sendToShell('[ -f ~/.bashrc ] && source ~/.bashrc || true')
@@ -578,7 +499,7 @@ export class PersistentShell {
     }
 
     try {
-      if (process.platform === 'win32') {
+      if (IS_WIN) {
         // Windows: 使用 taskkill 终止进程树
         try {
           execSync(`taskkill /f /t /pid ${parentPid}`, { stdio: 'ignore', timeout: 5000 })
@@ -704,8 +625,7 @@ export class PersistentShell {
           timeout: 1000,
         })
       } else {
-        // Windows 路径可能包含空格（如 "C:\Program Files\Git\bin\bash.exe"），需要用引号包裹
-        const quotedBinShell = process.platform === 'win32' ? `"${this.binShell}"` : this.binShell
+        const quotedBinShell = IS_WIN ? `"${this.binShell}"` : this.binShell
         execSync(`${quotedBinShell} -n -c ${quotedCommand}`, {
           stdio: 'ignore',
           timeout: 1000,
@@ -805,23 +725,18 @@ export class PersistentShell {
     return new Promise<ExecResult>(resolve => {
       try {
         let shellArgs: string[]
-        let actualCommand: string
-
         if (this.shellType === 'powershell') {
           // PowerShell 命令处理
           shellArgs = ['-NoProfile', '-Command', command]
-          actualCommand = command
         } else if (this.shellType === 'cmd') {
           // cmd.exe 命令处理
           shellArgs = ['/c', command]
-          actualCommand = command
         } else {
           // 回退处理
           shellArgs = [command]
-          actualCommand = command
         }
 
-        logInfo(`执行 ${this.shellType} 命令: ${actualCommand}`)
+        logInfo(`执行 ${this.shellType} 命令: ${command}`)
 
         // 直接使用对应的 Shell 执行命令
         const childProcess = spawn(this.binShell, shellArgs, {
@@ -947,7 +862,7 @@ export class PersistentShell {
       return
     }
 
-    const bashPath = toBashPath(resolved, this.shellType)
+    const bashPath = nativeToShellPath(resolved, this.shellType)
     await this.exec(`cd ${quoteForBash(bashPath)}`)
   }
 

@@ -5,6 +5,7 @@ import { execFileNoThrow } from './exec'
 import { execFile } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
+import { IS_MAC, exeName, unixDriveToNative } from './platform'
 
 const useBuiltinRipgrep = !!process.env.USE_BUILTIN_RIPGREP
 
@@ -16,18 +17,7 @@ export async function ripGrep(
   await codesignRipgrepIfNecessary()
   const rg = ripgrepPath()
 
-  // Windows 环境下，转换 Unix 风格的驱动器路径
-  let processedTarget = target
-  if (process.platform === 'win32') {
-    const unixDrivePattern = /^\/([a-z])\//i
-    const match = unixDrivePattern.exec(target)
-
-    if (match) {
-      const driveLetter = match[1].toUpperCase()
-      const rest = target.slice(3) // 去掉 /d/ 部分
-      processedTarget = `${driveLetter}:\\${rest.replace(/\//g, '\\')}`
-    }
-  }
+  const processedTarget = unixDriveToNative(target)
 
   // NB: When running interactively, ripgrep does not require a path as its last
   // argument, but when run non-interactively, it will hang unless a path or file
@@ -66,7 +56,7 @@ export async function ripGrep(
 
 let alreadyDoneSignCheck = false
 async function codesignRipgrepIfNecessary() {
-  if (process.platform !== 'darwin' || alreadyDoneSignCheck) {
+  if (!IS_MAC || alreadyDoneSignCheck) {
     return
   }
 
@@ -123,8 +113,7 @@ async function codesignRipgrepIfNecessary() {
 
 // 运行时动态获取 @vscode/ripgrep 的路径，避免打包时路径被固化
 function getVscodeRipgrepPath(): string {
-  // 关键：process.platform 在运行时求值，而不是打包时
-  const rgName = process.platform === 'win32' ? 'rg.exe' : 'rg'
+  const rgName = exeName('rg')
 
   try {
     // 方法1：通过 require.resolve 找到模块位置

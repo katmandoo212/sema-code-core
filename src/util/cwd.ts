@@ -2,6 +2,7 @@ import { PersistentShell } from './shell'
 import { cwd } from 'process'
 import { logInfo } from './log'
 import { normalizeFilePath } from './file'
+import { IS_WIN } from './platform'
 
 /**
  * 设置当前工作目录（动态变化，会随着shell目录切换而更新）
@@ -20,11 +21,7 @@ export async function setCwd(cwd: string): Promise<void> {
   await PersistentShell.getInstance().setCwd(cwd);
   let actualCwd = PersistentShell.getInstance().pwd();
 
-  // Windows平台下使用 normalizeFilePath 标准化路径显示
-  if (process.platform === 'win32') {
-    actualCwd = normalizeFilePath(actualCwd);
-  }
-
+  if (IS_WIN) actualCwd = normalizeFilePath(actualCwd);
   logInfo(`[setCwd] 工作目录切换完成，实际目录: ${actualCwd}`);
 }
 
@@ -42,12 +39,7 @@ export async function setCwd(cwd: string): Promise<void> {
 export function getCwd(): string {
   const currentPath = PersistentShell.getInstance().pwd()
 
-  // Windows平台下使用 normalizeFilePath 统一标准化路径
-  if (process.platform === 'win32') {
-    return normalizeFilePath(currentPath)
-  }
-
-  return currentPath
+  return IS_WIN ? normalizeFilePath(currentPath) : currentPath
 }
 
 const STATE: {
@@ -65,12 +57,7 @@ const STATE: {
  * @param cwd 要设置的原始工作目录路径
  */
 export function setOriginalCwd(cwd: string): void {
-  // Windows 平台下标准化路径（处理 /c/Users/... 格式）
-  if (process.platform === 'win32') {
-    STATE.originalCwd = normalizeFilePath(cwd)
-  } else {
-    STATE.originalCwd = cwd
-  }
+  STATE.originalCwd = IS_WIN ? normalizeFilePath(cwd) : cwd
 }
 
 /**

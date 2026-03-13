@@ -1,7 +1,6 @@
 import * as path from 'path';
-import * as os from 'os';
 import { getDayTimeString } from '../util/time';
-import { normalizeFilePath } from './file';
+import { expandHome, unixDriveToNative } from './platform';
 import {
   SEMA_ROOT,
   CLAUDE_ROOT,
@@ -14,25 +13,23 @@ import {
   EVENT_DIR_PATH
 } from '../constants/config';
 
+let _semaRootDir: string | undefined;
+let _claudeRootDir: string | undefined;
+
 /**
  * 获取 Sema 根目录路径
  * 默认为 ~/.sema，可通过环境变量 SEMA_ROOT 自定义
  * 跨平台兼容：Windows、macOS、Linux
  */
 export function getSemaRootDir(): string {
-  const customRoot = process.env.SEMA_ROOT;
-  let result: string;
-  if (customRoot) {
-    // Windows 平台下标准化路径（处理 /c/Users/... 格式）
-    result = process.platform === 'win32' ? normalizeFilePath(customRoot) : path.resolve(customRoot);
-  } else if (SEMA_ROOT.startsWith('~/')) {
-    // 处理 SEMA_ROOT 常量中的 ~ 符号，跨平台兼容
-    result = path.join(os.homedir(), SEMA_ROOT.slice(2));
-  } else {
-    result = path.resolve(SEMA_ROOT);
+  if (!_semaRootDir) {
+    const customRoot = process.env.SEMA_ROOT;
+    _semaRootDir = customRoot
+      ? path.resolve(unixDriveToNative(customRoot))
+      : expandHome(SEMA_ROOT);
+    console.log('[getSemaRootDir]', _semaRootDir);
   }
-  console.log('[getSemaRootDir]', result);
-  return result;
+  return _semaRootDir;
 }
 
 /**
@@ -41,17 +38,14 @@ export function getSemaRootDir(): string {
  * 跨平台兼容：Windows、macOS、Linux
  */
 export function getClaudeRootDir(): string {
-  const customRoot = process.env.CLAUDE_ROOT;
-  let result: string;
-  if (customRoot) {
-    result = process.platform === 'win32' ? normalizeFilePath(customRoot) : path.resolve(customRoot);
-  } else if (CLAUDE_ROOT.startsWith('~/')) {
-    result = path.join(os.homedir(), CLAUDE_ROOT.slice(2));
-  } else {
-    result = path.resolve(CLAUDE_ROOT);
+  if (!_claudeRootDir) {
+    const customRoot = process.env.CLAUDE_ROOT;
+    _claudeRootDir = customRoot
+      ? path.resolve(unixDriveToNative(customRoot))
+      : expandHome(CLAUDE_ROOT);
+    console.log('[getClaudeRootDir]', _claudeRootDir);
   }
-  console.log('[getClaudeRootDir]', result);
-  return result;
+  return _claudeRootDir;
 }
 
 /**

@@ -3,14 +3,10 @@ import { memoize } from 'lodash-es'
 import os from 'os'
 import { getIsGit } from './git'
 import { getOriginalCwd } from './cwd'
+import { IS_WIN, IS_MAC } from './platform'
 
 export const env = {
-  platform:
-    process.platform === 'win32'
-      ? 'windows'
-      : process.platform === 'darwin'
-        ? 'macos'
-        : 'linux',
+  platform: IS_WIN ? 'windows' : IS_MAC ? 'macos' : 'linux',
 }
 
 export const getEnv = memoize(async (): Promise<string> => {

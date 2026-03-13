@@ -24,6 +24,7 @@ import { cwd } from 'process'
 import { listAllContentFiles } from './ripgrep'
 import { LRUCache } from 'lru-cache'
 import { getCwd } from './cwd'
+import { IS_WIN, unixDriveToNative } from './platform'
 
 export type File = {
   filename: string
@@ -38,22 +39,9 @@ export async function glob(
   { limit, offset }: { limit: number; offset: number },
   abortSignal: AbortSignal,
 ): Promise<{ files: string[]; truncated: boolean }> {
-  // Windows 环境下，转换 Unix 风格的驱动器路径
-  let processedCwd = cwd
-  if (process.platform === 'win32') {
-    const unixDrivePattern = /^\/([a-z])\//i
-    const match = unixDrivePattern.exec(cwd)
-
-    if (match) {
-      const driveLetter = match[1].toUpperCase()
-      const rest = cwd.slice(3) // 去掉 /d/ 部分
-      processedCwd = `${driveLetter}:\\${rest.replace(/\//g, '\\')}`
-    }
-  }
-
   // TODO: Use worker threads
   const paths = await globLib([filePattern], {
-    cwd: processedCwd,
+    cwd: unixDriveToNative(cwd),
     nocase: true,
     nodir: true,
     signal: abortSignal,
@@ -296,26 +284,14 @@ export function detectLineEndingsDirect(
  * 为命令行执行包裹路径引号（仅 Windows 且路径包含空格时）
  */
 export function quotePathForShell(filePath: string): string {
-  if (process.platform === 'win32' && filePath.includes(' ')) {
+  if (IS_WIN && filePath.includes(' ')) {
     return `"${filePath}"`
   }
   return filePath
 }
 
 export function normalizeFilePath(filePath: string): string {
-  let processedPath = filePath
-
-  // Windows 环境下，转换 Unix 风格的驱动器路径 (/d/, /c/ 等)
-  if (process.platform === 'win32') {
-    const unixDrivePattern = /^\/([a-z])\//i
-    const match = unixDrivePattern.exec(filePath)
-
-    if (match) {
-      const driveLetter = match[1].toUpperCase()
-      const rest = filePath.slice(3) // 去掉 /d/ 部分
-      processedPath = `${driveLetter}:\\${rest.replace(/\//g, '\\')}`
-    }
-  }
+  const processedPath = unixDriveToNative(filePath)
 
   const absoluteFilePath = isAbsolute(processedPath)
     ? processedPath
@@ -345,21 +321,7 @@ export function normalizeFilePath(filePath: string): string {
  * 用于 skill 系统中需要保持路径结构的场景
  */
 export function normalizeSkillPath(filePath: string): string {
-  let processedPath = filePath
-
-  // Windows 环境下，转换 Unix 风格的驱动器路径 (/d/, /c/ 等)
-  if (process.platform === 'win32') {
-    const unixDrivePattern = /^\/([a-z])\//i
-    const match = unixDrivePattern.exec(filePath)
-
-    if (match) {
-      const driveLetter = match[1].toUpperCase()
-      const rest = filePath.slice(3) // 去掉 /d/ 部分
-      processedPath = `${driveLetter}:\\${rest.replace(/\//g, '\\')}`
-    }
-  }
-
-  return normalize(processedPath)
+  return normalize(unixDriveToNative(filePath))
 }
 
 export function getAbsolutePath(path: string | undefined): string | undefined {

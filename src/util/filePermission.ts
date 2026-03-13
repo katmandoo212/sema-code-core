@@ -1,5 +1,6 @@
 import { getOriginalCwd, getCwd } from './cwd';
 import { isAbsolute, resolve, relative } from 'path';
+import { normalizeCmpPath } from './platform';
 
 /**
  * 文件权限相关工具函数
@@ -33,8 +34,7 @@ function toAbsolutePath(path: string): string {
  * 规范化路径
  */
 function normalize(p: string): string {
-  const resolved = resolve(p);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  return normalizeCmpPath(p);
 }
 
 /**
@@ -42,5 +42,6 @@ function normalize(p: string): string {
  */
 function isSubpath(base: string, target: string): boolean {
   const rel = relative(base, target);
-  return !!rel && !rel.startsWith('..') && !isAbsolute(rel);
+  if (!rel || rel === '') return true;
+  return !rel.startsWith('..') && !isAbsolute(rel);
 }
