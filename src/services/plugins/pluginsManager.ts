@@ -785,10 +785,13 @@ class PluginsManager {
     this.marketplacePluginsInfoCache = info
     logInfo(`市场插件信息刷新完成: ${info.marketplaces.length} 个市场, ${info.plugins.length} 个插件`)
 
-    // 插件变更后后台触发 agents 刷新，不阻塞当前流程（动态 import 避免循环依赖）
+    // 插件变更后后台触发 agents/skills 刷新，不阻塞当前流程（动态 import 避免循环依赖）
     setImmediate(() => {
       import('../agents/agentsManager').then(({ getAgentsManager }) => {
         getAgentsManager().refreshAgentsInfo().catch((err: unknown) => logError(`插件变更后刷新 Agents 失败: ${err}`))
+      }).catch(() => {})
+      import('../skill/skillsManager').then(({ getSkillsManager }) => {
+        getSkillsManager().refreshSkillsInfo().catch((err: unknown) => logError(`插件变更后刷新 Skills 失败: ${err}`))
       }).catch(() => {})
     })
 

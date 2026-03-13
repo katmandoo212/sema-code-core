@@ -1,6 +1,9 @@
 // sema数据存储目录
 export const SEMA_ROOT = '~/.sema'
 
+// claude数据存储目录
+export const CLAUDE_ROOT = '~/.claude'
+
 // 模型配置文件
 export const MODEL_CONF_FILE_PATH = 'model.conf'
 

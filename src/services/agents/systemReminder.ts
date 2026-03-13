@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import * as fs from 'fs'
 import * as path from 'path'
-import { getOriginalCwd } from './cwd'
-import { PROJECT_FILE } from '../constants/product'
-import { getGlobalAgentMdPath } from '../util/savePath'
-import { getConfManager } from '../manager/ConfManager'
+import { getOriginalCwd } from '../../util/cwd'
+import { PROJECT_FILE } from '../../constants/product'
+import { getGlobalAgentMdPath } from '../../util/savePath'
+import { getConfManager } from '../../manager/ConfManager'
+import { getSkillTypesDescription } from '../skill/skillsManager'
 
 /**
  * 读取全局 ~/.claude/CLAUDE.md
@@ -12,7 +13,7 @@ import { getConfManager } from '../manager/ConfManager'
 function readGlobalAgentFile(): string {
   try {
     const agentPath = getGlobalAgentMdPath()
-    console.log('agentPath:', agentPath)
+    // console.log('agentPath:', agentPath)
     if (fs.existsSync(agentPath)) {
       return fs.readFileSync(agentPath, 'utf8')
     }
@@ -100,11 +101,26 @@ function buildCurrentDateSection(): string {
 }
 
 /**
+ * 生成 skills 相关的系统提醒信息
+ */
+export function generateSkillsReminder(): Anthropic.ContentBlockParam[] {
+  const skillsDesc = getSkillTypesDescription()
+  if (!skillsDesc) return []
+
+  const reminder = `<system-reminder>\nThe following skills are available for use with the Skill tool:\n\n${skillsDesc}\n</system-reminder>`
+
+  return [{
+    type: 'text' as const,
+    text: reminder
+  }]
+}
+
+/**
  * 生成 rules 相关的系统提醒信息
  */
 export function generateRulesReminders(): Anthropic.ContentBlockParam[] {
   const globalSection = buildGlobalAgentSection(readGlobalAgentFile())
-  console.log('globalSection:', globalSection)
+  // console.log('globalSection:', globalSection)
   const projectSection = buildProjectConfigSection()
   const customRulesSection = buildCustomRulesSection()
 

@@ -1,8 +1,7 @@
 import { z } from 'zod'
 import { Tool } from '../base/Tool'
-import { findSkill, getSkillRegistry } from '../../services/skill/skillRegistry'
-import { normalizeSkillPath } from '../../util/file'
 import { DESCRIPTION, TOOL_NAME_FOR_PROMPT } from './prompt'
+import { getSkillsManager } from '../../services/skill/skillsManager'
 
 // 辅助函数：生成显示标题
 function getTitle(input?: { skill?: string; args?: string }) {
@@ -22,12 +21,9 @@ const inputSchema = z.strictObject({
 })
 
 type Output = {
-  skillName: string
-  skillContent: string
-  allowedTools: string[]
-  baseDir: string
-  skill?: string
-  args?: string
+  name: string
+  description: string
+  systemPrompt: string  // skill 自身的系统提示（skillConfig.prompt 原文）
 }
 
 export const SkillTool = {
@@ -41,11 +37,11 @@ export const SkillTool = {
   },
   async validateInput({ skill }: z.infer<typeof inputSchema>) {
     try {
-      const skillObj = findSkill(skill)
+      const skills = await getSkillsManager().getSkillsInfo()
+      const found = skills.find(s => s.name === skill)
 
-      if (!skillObj) {
-        const registry = getSkillRegistry()
-        const availableSkills = Array.from(registry.keys()).join(', ')
+      if (!found) {
+        const availableSkills = skills.map(s => s.name).join(', ')
         return {
           result: false,
           message: `Skill "${skill}" not found. Available skills: ${availableSkills || 'none'}`,
@@ -60,36 +56,26 @@ export const SkillTool = {
       }
     }
   },
-  genToolPermission({ skill, args }: z.infer<typeof inputSchema>) {
-    const skillObj = findSkill(skill)
+  genToolPermission({ skill }: z.infer<typeof inputSchema>) {
+    const skillConfig = getSkillsManager().getSkillConfig(skill)
 
-    if (!skillObj) {
+    if (!skillConfig) {
       throw new Error(`Skill "${skill}" not found`)
     }
 
-    const title = skillObj.metadata.name
-    const content = skillObj.metadata.description
-
     return {
-      title,
-      content,
+      title: skillConfig.name,
+      content: skillConfig.prompt,
     }
   },
-  genToolResultMessage({ skillName, skillContent, allowedTools, baseDir }) {
-    const title = skillName
-    const summary = `Skill "${skillName}" loaded successfully`
+  genToolResultMessage({ name, description, systemPrompt }: Output) {
+    const title = name
+    const summary = `Skill "${name}" loaded successfully`
 
-    let content = `Base directory: ${normalizeSkillPath(baseDir)}\n\n`
-
-    if (allowedTools && allowedTools.length > 0) {
-      content += `Recommended tools: ${allowedTools.join(', ')}\n\n`
-    }
-
-    // 显示技能内容的前500个字符
-    const preview = skillContent.length > 500
-      ? skillContent.substring(0, 500) + '...'
-      : skillContent
-    content += preview
+    const preview = systemPrompt.length > 8000
+      ? systemPrompt.substring(0, 8000) + '...'
+      : systemPrompt
+    const content = `${description}\n\n${preview}`
 
     return {
       title,
@@ -101,70 +87,41 @@ export const SkillTool = {
     return getTitle(input)
   },
   async *call({ skill, args }: z.infer<typeof inputSchema>) {
-    const skillObj = findSkill(skill)
+    const skillConfig = getSkillsManager().getSkillConfig(skill)
 
-    if (!skillObj) {
+    if (!skillConfig) {
       throw new Error(`Skill "${skill}" not found`)
     }
 
-    // 处理参数替换
-    let content = skillObj.content
     const trimmedArgs = args?.trim()
+    let textContent = skillConfig.prompt
 
     if (trimmedArgs) {
-      if (content.includes('$ARGUMENTS')) {
-        content = content.replaceAll('$ARGUMENTS', trimmedArgs)
+      if (textContent.includes('$ARGUMENTS')) {
+        textContent = textContent.replaceAll('$ARGUMENTS', trimmedArgs)
       } else {
-        content = `${content}\n\nARGUMENTS: ${trimmedArgs}`
+        textContent = `${textContent}\n\nARGUMENTS: ${trimmedArgs}`
       }
     }
 
+    const text = skillConfig.filePath
+      ? `Base directory for this skill: ${skillConfig.filePath}\n\n${textContent}`
+      : textContent
+
     const output: Output = {
-      skillName: skillObj.metadata.name,
-      skillContent: content,
-      allowedTools: skillObj.metadata['allowed-tools'] || [],
-      baseDir: normalizeSkillPath(skillObj.baseDir),
-      skill,
-      args,
+      name: skillConfig.name,
+      description: skillConfig.description,
+      systemPrompt: skillConfig.prompt,
     }
 
-    const resultForAssistant = this.genResultForAssistant(output)
-
     yield {
-      type: 'result',
-      resultForAssistant: resultForAssistant,
+      type: 'result' as const,
+      resultForAssistant: this.genResultForAssistant(output),
       data: output,
+      additionalBlocks: [{ type: 'text' as const, text }],
     }
   },
   genResultForAssistant(output: Output): string {
-    const { skillContent, allowedTools, baseDir, args } = output
-
-    let result = `# Skill Activated: ${output.skillName}\n\n`
-    result += `Base directory for this skill: ${normalizeSkillPath(baseDir)}\n\n`
-
-    // 添加参数信息（如果有）
-    if (args) {
-      result += `Arguments: ${args}\n\n`
-    }
-
-    result += `${skillContent}\n`
-
-    // 注入 Allowed Tools 软约束
-    if (allowedTools && allowedTools.length > 0) {
-      result += `\n---\n\n`
-      result += `<system-reminder>\n`
-      result += `While working on this skill, you should prioritize using the following tools: ${allowedTools.join(', ')}.\n`
-      result += `These tools are recommended for this skill's workflow. You may use other tools if absolutely necessary.\n`
-      result += `</system-reminder>\n`
-    }
-
-    // 添加引导性文本，确保模型继续执行任务
-    result += `\n---\n\n`
-    result += `Now that you have loaded the skill instructions, please proceed with the task based on the guidelines above.`
-    if (args) {
-      result += ` Remember to process the provided arguments: ${args}`
-    }
-
-    return result
+    return `Launching skill: ${output.name}`
   },
 } satisfies Tool<typeof inputSchema, Output>

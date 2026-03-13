@@ -25,7 +25,7 @@ type QueuedCommand = {
 }
 
 // 临时文件前缀
-const TEMPFILE_PREFIX = os.tmpdir() + `sema-`
+const TEMPFILE_PREFIX = join(os.tmpdir(), 'sema-')
 // 默认超时时间（30分钟）
 const DEFAULT_TIMEOUT = 30 * 60 * 1000
 // SIGTERM信号的标准退出码

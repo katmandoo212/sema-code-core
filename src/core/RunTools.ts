@@ -278,6 +278,7 @@ export async function* checkPermissionsAndCallTool(
           const controlSignal = (result.data as any)?.controlSignal as ToolControlSignal | undefined
 
           // 生成工具结果消息
+          const additionalBlocks = result.additionalBlocks ?? []
           yield createUserMessage(
             [
               {
@@ -285,6 +286,7 @@ export async function* checkPermissionsAndCallTool(
                 content: result.resultForAssistant || String(result.data),
                 tool_use_id: toolUseID,
               },
+              ...additionalBlocks,
             ],
             {
               data: result.data,

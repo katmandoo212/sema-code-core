@@ -1,17 +1,17 @@
 import { SemaCoreConfig, ModelConfig, TaskConfig, FetchModelsParams, FetchModelsResult, ApiTestParams, ApiTestResult, ModelUpdateData, UpdatableCoreConfigKeys, UpdatableCoreConfig } from '../types';
 import { ToolInfo } from '../types/index';
 import { MCPServerConfig, MCPScopeType, MCPServerInfo } from '../types/mcp';
-import { SkillInfo } from '../types/skill';
 import { ToolPermissionResponse, AskQuestionResponseData, PlanExitResponseData } from '../events/types';
 import { fetchModels, testApiConnection } from '../services/api/apiUtil';
 import { getMCPManager, initMCPManager } from '../services/mcp/MCPManager';
-import { getSkillsInfo } from '../services/skill/skillRegistry';
 import { getCachedCustomCommands, reloadCustomCommands as reloadCustomCommandsImpl } from '../services/command/customCommands';
 import { CustomCommand } from '../types/command';
 import { getPluginsManager } from '../services/plugins/pluginsManager';
 import { PluginScope, MarketplacePluginsInfo } from '../types/plugin';
 import { getAgentsManager } from '../services/agents/agentsManager';
-import { AgentConfig, AgentScope } from '../types/agent';
+import { AgentConfig } from '../types/agent';
+import { getSkillsManager } from '../services/skill/skillsManager';
+import { SkillConfig } from '../types/skill';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -98,9 +98,6 @@ export class SemaCore {
   connectMCPServer = (name: string): Promise<MCPServerInfo> => getMCPManager().connectMCPServer(name);
   updateMCPUseTools = (name: string, toolNames: string[] | null): boolean => getMCPManager().updateMCPUseTools(name, toolNames);
 
-  // ==================== Skill 管理 ====================
-  getSkillsInfo = (): SkillInfo[] => getSkillsInfo();
-
   // ==================== Custom Commands 管理 ====================
   getCustomCommands = (): Promise<CustomCommand[]> => getCachedCustomCommands();
   reloadCustomCommands = (): void => reloadCustomCommandsImpl();
@@ -123,6 +120,10 @@ export class SemaCore {
   refreshAgentsInfo = (): Promise<AgentConfig[]> => getAgentsManager().refreshAgentsInfo();
   addAgentConf = (agentConf: AgentConfig): Promise<AgentConfig[]> => getAgentsManager().addAgentConf(agentConf);
   removeAgentConf = (name: string): Promise<AgentConfig[]> => getAgentsManager().removeAgentConf(name);
+
+  // ==================== Skills 管理 ====================
+  getSkillsInfo = (): Promise<SkillConfig[]> => getSkillsManager().getSkillsInfo();
+  refreshSkillsInfo = (): Promise<SkillConfig[]> => getSkillsManager().refreshSkillsInfo();
 
   // ==================== 资源管理 ====================
   dispose = async () => {

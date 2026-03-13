@@ -17,8 +17,8 @@ import { getEventBus } from '../events/EventSystem'
 import { getTools } from '../tools/base/tools'
 import { getMCPManager } from '../services/mcp/MCPManager'
 import { getConfManager } from '../manager/ConfManager'
-import { formatSystemPrompt, generateTodosReminders } from '../services/agents/genSystemPrompt'
-import { generateRulesReminders } from '../util/rules'
+import { formatSystemPrompt } from '../services/agents/genSystemPrompt'
+import { generateRulesReminders, generateSkillsReminder } from '../services/agents/systemReminder'
 import { runToolsConcurrently, runToolsSerially } from './RunTools'
 
 
@@ -292,11 +292,11 @@ async function handleControlSignalRebuild(
     // 构建首次查询的额外信息（todos 和 rules）
     const additionalReminders: Anthropic.ContentBlockParam[] = []
 
-    // 添加 todos 信息
-    const hasTodoWriteTool = newTools.some(tool => tool.name === 'TodoWrite')
-    if (hasTodoWriteTool) {
-      const todosReminders = generateTodosReminders()
-      additionalReminders.push(...todosReminders)
+    // 添加 skills 信息
+    const hasSkillTool = newTools.some(tool => tool.name === 'Skill')
+    if (hasSkillTool) {
+      const skillsReminders = generateSkillsReminder()
+      additionalReminders.push(...skillsReminders)
     }
 
     // 添加 rules 信息

@@ -6,8 +6,8 @@ import { loadHistory } from '../util/history';
 import { getTopicFromUserInput } from '../util/topic';
 import { processFileReferences } from '../util/fileReference';
 import { createUserMessage } from '../util/message';
-import { generateRulesReminders } from '../util/rules';
-import { formatSystemPrompt, generateTodosReminders, generatePlanReminders } from '../services/agents/genSystemPrompt';
+import { generateRulesReminders, generateSkillsReminder } from '../services/agents/systemReminder';
+import { formatSystemPrompt, generatePlanReminders } from '../services/agents/genSystemPrompt';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
 import { getTools } from '../tools/base/tools';
@@ -17,7 +17,6 @@ import { isInterruptedException } from '../types/errors';
 import { Message } from '../types/message';
 import { query } from './Conversation';
 import type { AgentContext } from '../types/agent'
-import { initializeSkillRegistry, clearSkillRegistry } from '../services/skill/skillRegistry';
 import { getMCPManager } from '../services/mcp/MCPManager';
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager';
 import { handleSystemCommand, tryHandleCustomCommand } from '../services/command/runCommand';
@@ -54,7 +53,7 @@ export class SemaEngine {
     const historyData = await loadHistory(sessionId, workingDir);
     logInfo(`会话CoreConfig: ${JSON.stringify(coreConfig, null, 2)}`)
 
-    // 初始化 Skill 注册表 & 加载自定义命令（不阻塞会话创建）
+    // 加载自定义命令（不阻塞会话创建）
     this.initializePlugins(coreConfig?.workingDir);
 
     // 将加载的消息历史和 todos 设置到主代理状态
@@ -166,6 +165,7 @@ export class SemaEngine {
       // 1、构建系统提示（根据是否有代理配置决定）
       const hasTodoWriteTool = agentContext.tools.some(tool => tool.name === 'TodoWrite');
       const hasAskUserQuestionTool = agentContext.tools.some(tool => tool.name === 'AskUserQuestion');
+      const hasSkillTool = agentContext.tools.some(tool => tool.name === 'Skill');
       const systemPromptContent = await formatSystemPrompt({ hasTodoWriteTool, hasAskUserQuestionTool });
 
       // 2、构建用户消息内容
@@ -177,8 +177,8 @@ export class SemaEngine {
       const additionalReminders = this.buildAdditionalReminders(
         fileReferencesResult.systemReminders,
         messageHistory,
-        hasTodoWriteTool,
-        agentMode
+        agentMode,
+        hasSkillTool
       )
       const userMessage = createUserMessage([
         ...additionalReminders,
@@ -209,23 +209,23 @@ export class SemaEngine {
   }
 
   /**
-   * 构建 additionalReminders：文件引用、首次查询、Plan 模式信息
+   * 构建 additionalReminders：文件引用、首次查询、Plan 模式信息、skill信息
    */
   private buildAdditionalReminders(
     systemReminders: Anthropic.ContentBlockParam[],
     messageHistory: Message[],
-    hasTodoWriteTool: boolean,
     agentMode: 'Agent' | 'Plan',
+    hasSkillTool: boolean = false,
   ): Anthropic.ContentBlockParam[] {
     // 文件引用 每次输入均添加
     const reminders = [...systemReminders]
 
-    // 判断是否为首次查询（消息历史为空），添加首次查询的额外信息 todos\rules
+    // 判断是否为首次查询（消息历史为空），添加首次查询的额外信息 skills\rules
     if (messageHistory.length === 0) {
-      // 删除 todos 初始化信息
-      // if (hasTodoWriteTool) {
-      //   reminders.push(...generateTodosReminders())
-      // }
+      // 添加 skills 信息（仅当工具集中包含 Skill 工具时）
+      if (hasSkillTool) {
+        reminders.push(...generateSkillsReminder())
+      }
 
       // 添加 rules 信息
       reminders.push(...generateRulesReminders())
@@ -316,17 +316,9 @@ export class SemaEngine {
   }
 
   /**
-   * 初始化 Skill 注册表 & 加载自定义命令，不阻塞会话创建
+   * 加载自定义命令，不阻塞会话创建
    */
-  private async initializePlugins(workingDir?: string): Promise<void> {
-    try {
-      clearSkillRegistry();
-      initializeSkillRegistry(workingDir || process.cwd());
-      logDebug('Skill registry initialized successfully');
-    } catch (error) {
-      logWarn(`Failed to initialize skill registry: ${error}`);
-    }
-
+  private async initializePlugins(_workingDir?: string): Promise<void> {
     try {
       const result = await loadCustomCommands();
       logDebug(`Loaded ${result.commands.length} custom commands`);

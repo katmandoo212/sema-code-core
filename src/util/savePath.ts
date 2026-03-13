@@ -4,6 +4,7 @@ import { getDayTimeString } from '../util/time';
 import { normalizeFilePath } from './file';
 import {
   SEMA_ROOT,
+  CLAUDE_ROOT,
   MODEL_CONF_FILE_PATH,
   PROJECT_CONF_FILE_PATH,
   HISTORY_DIR_PATH,
@@ -20,20 +21,37 @@ import {
  */
 export function getSemaRootDir(): string {
   const customRoot = process.env.SEMA_ROOT;
+  let result: string;
   if (customRoot) {
     // Windows 平台下标准化路径（处理 /c/Users/... 格式）
-    if (process.platform === 'win32') {
-      return normalizeFilePath(customRoot);
-    }
-    return path.resolve(customRoot);
+    result = process.platform === 'win32' ? normalizeFilePath(customRoot) : path.resolve(customRoot);
+  } else if (SEMA_ROOT.startsWith('~/')) {
+    // 处理 SEMA_ROOT 常量中的 ~ 符号，跨平台兼容
+    result = path.join(os.homedir(), SEMA_ROOT.slice(2));
+  } else {
+    result = path.resolve(SEMA_ROOT);
   }
+  console.log('[getSemaRootDir]', result);
+  return result;
+}
 
-  // 处理 SEMA_ROOT 常量中的 ~ 符号，跨平台兼容
-  if (SEMA_ROOT.startsWith('~/')) {
-    return path.join(os.homedir(), SEMA_ROOT.slice(2));
+/**
+ * 获取 Claude 根目录路径
+ * 默认为 ~/.claude，可通过环境变量 CLAUDE_ROOT 自定义
+ * 跨平台兼容：Windows、macOS、Linux
+ */
+export function getClaudeRootDir(): string {
+  const customRoot = process.env.CLAUDE_ROOT;
+  let result: string;
+  if (customRoot) {
+    result = process.platform === 'win32' ? normalizeFilePath(customRoot) : path.resolve(customRoot);
+  } else if (CLAUDE_ROOT.startsWith('~/')) {
+    result = path.join(os.homedir(), CLAUDE_ROOT.slice(2));
+  } else {
+    result = path.resolve(CLAUDE_ROOT);
   }
-
-  return path.resolve(SEMA_ROOT);
+  console.log('[getClaudeRootDir]', result);
+  return result;
 }
 
 /**
@@ -151,24 +169,6 @@ export function getLLMCacheFilePath(): string {
  */
 export function getEventDir(): string {
   return path.join(getSemaRootDir(), EVENT_DIR_PATH);
-}
-
-
-/**
- * 获取 Claude 根目录路径
- * 默认为 ~/.claude，可通过环境变量 CLAUDE_ROOT 自定义
- * 跨平台兼容：Windows、macOS、Linux
- */
-export function getClaudeRootDir(): string {
-  const customRoot = process.env.CLAUDE_ROOT;
-  if (customRoot) {
-    if (process.platform === 'win32') {
-      return normalizeFilePath(customRoot);
-    }
-    return path.resolve(customRoot);
-  }
-
-  return path.join(os.homedir(), '.claude');
 }
 
 /**

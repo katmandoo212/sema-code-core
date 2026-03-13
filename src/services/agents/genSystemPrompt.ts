@@ -4,7 +4,6 @@ import { getGitStatus } from '../../util/git'
 import { getEnv } from '../../util/env'
 import { memoize } from 'lodash-es'
 import { getConfManager } from '../../manager/ConfManager'
-import { getSkillsSummary } from '../skill/skillRegistry'
 import { getOriginalCwd } from '../../util/cwd'
 import * as path from 'path';
 import { 
@@ -53,21 +52,6 @@ export const getContext = memoize(
   }
 )
 
-export function generateTodosReminders(): Anthropic.ContentBlockParam[] {
-  const additionalReminders: Anthropic.ContentBlockParam[] = []
-
-  const rulesReminder = `<system-reminder>
-${Empty_Todo_Reminder_Prompt}
-</system-reminder>`
-
-  additionalReminders.push({
-    type: 'text' as const,
-    text: rulesReminder
-  })
-
-  return additionalReminders
-}
-
 export function generatePlanReminders(taskDescription?: string): Anthropic.ContentBlockParam[] {
   const additionalReminders: Anthropic.ContentBlockParam[] = []
   const currentDir = getOriginalCwd()
@@ -113,13 +97,6 @@ function getProductSyspromptPrefix(): string {
 }
 
 function getSystemPrompt(context: Record<string, any> = {}, options?: { hasTodoWriteTool?: boolean, hasAskUserQuestionTool?: boolean }): string {
-  // 获取 Skills 摘要
-  let skillsSummary = ''
-  try {
-    skillsSummary = getSkillsSummary()
-  } catch (error) {
-    // Skills 系统可能未初始化，忽略错误
-  }
 
   // 是否包含 Task Management 部分（默认包含，除非明确指定没有 TodoWrite 工具）
   const hasTodoWriteTool = options?.hasTodoWriteTool !== false
@@ -140,7 +117,6 @@ function getSystemPrompt(context: Record<string, any> = {}, options?: { hasTodoW
 
   return `
 ${Agent_Summary_Prompt}
-${skillsSummary}
 
 ${Style_and_Professional_Prompt}
 

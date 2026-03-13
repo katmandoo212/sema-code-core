@@ -16,8 +16,8 @@ import { TaskAgentStartData, TaskAgentEndData } from '../../events/types'
 import { logDebug, logError } from '../../util/log'
 import { isInterruptedException } from '../../types/errors'
 import { calculateStats, formatSummary, extractResultText } from '../../util/agentStats'
-import { generateTodosReminders, buildAgentSystemPrompt } from '../../services/agents/genSystemPrompt'
-import { generateRulesReminders } from '../../util/rules'
+import { buildAgentSystemPrompt } from '../../services/agents/genSystemPrompt'
+import { generateRulesReminders, generateSkillsReminder } from '../../services/agents/systemReminder'
 
 const inputSchema = z.strictObject({
   description: z.string().describe('A short (3-5 word) description of the task'),
@@ -98,14 +98,13 @@ export const TaskTool = {
 
       logDebug(`Subagent ${agentConfig.name} has ${subagentTools.length} tools available`)
 
-      // 5. 创建用户消息（包含 todos 和 rules 信息）
+      // 5. 创建用户消息（包含 skills 和 rules 信息）
       const additionalReminders: Anthropic.ContentBlockParam[] = []
 
-      // 只有 TodoWrite 工具在可用工具列表内才添加 todos 信息
-      const hasTodoWriteTool = subagentTools.some(tool => tool.name === 'TodoWrite')
-      if (hasTodoWriteTool) {
-        const todosReminders = generateTodosReminders()
-        additionalReminders.push(...todosReminders)
+      // 添加 skills 信息（仅当子代理包含 Skill 工具时）
+      if (subagentTools.some(t => t.name === 'Skill')) {
+        const skillsReminders = generateSkillsReminder()
+        additionalReminders.push(...skillsReminders)
       }
 
       // 添加 rules 信息

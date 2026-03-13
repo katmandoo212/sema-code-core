@@ -124,11 +124,8 @@ export type {
 
 // 导出 skill 相关类型
 export type {
-  SkillMetadata,
-  Skill,
-  SkillLoaderConfig,
-  SkillRegistry,
-  SkillInfo
+  SkillScope,
+  SkillConfig,
 } from './skill';
 
 // 导出 agent 相关类型

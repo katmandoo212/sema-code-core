@@ -47,7 +47,7 @@ export interface Tool<
     input: z.infer<TInput>,
     agentContext: any, 
   ) => AsyncGenerator<
-    { type: 'result'; data: TOutput; resultForAssistant?: Anthropic.ToolResultBlockParam['content'] },
+    { type: 'result'; data: TOutput; resultForAssistant?: Anthropic.ToolResultBlockParam['content']; additionalBlocks?: Anthropic.ContentBlockParam[] },
     void,
     unknown
   >
