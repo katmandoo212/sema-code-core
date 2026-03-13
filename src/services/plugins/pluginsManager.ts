@@ -155,13 +155,19 @@ class PluginsManager {
       const commandsDir = path.join(pluginSourcePath, 'commands')
       if (fs.existsSync(commandsDir)) {
         const files = await fsPromises.readdir(commandsDir)
-        components.commands = files.filter(f => f.endsWith('.md')).map(f => path.basename(f, '.md'))
+        components.commands = files.filter(f => f.endsWith('.md')).map(f => ({
+          name: path.basename(f, '.md'),
+          filePath: path.join(commandsDir, f)
+        }))
       }
 
       const agentsDir = path.join(pluginSourcePath, 'agents')
       if (fs.existsSync(agentsDir)) {
         const files = await fsPromises.readdir(agentsDir)
-        components.agents = files.filter(f => f.endsWith('.md')).map(f => path.basename(f, '.md'))
+        components.agents = files.filter(f => f.endsWith('.md')).map(f => ({
+          name: path.basename(f, '.md'),
+          filePath: path.join(agentsDir, f)
+        }))
       }
 
       const skillsDir = path.join(pluginSourcePath, 'skills')
@@ -169,7 +175,7 @@ class PluginsManager {
         const entries = await fsPromises.readdir(skillsDir, { withFileTypes: true })
         components.skills = entries
           .filter(e => e.isDirectory() && fs.existsSync(path.join(skillsDir, e.name, 'SKILL.md')))
-          .map(e => e.name)
+          .map(e => ({ name: e.name, filePath: path.join(skillsDir, e.name, 'SKILL.md') }))
       }
     } catch (error) {
       logError(`读取插件组件失败 [${pluginSourcePath}]: ${error}`)
@@ -778,6 +784,14 @@ class PluginsManager {
 
     this.marketplacePluginsInfoCache = info
     logInfo(`市场插件信息刷新完成: ${info.marketplaces.length} 个市场, ${info.plugins.length} 个插件`)
+
+    // 插件变更后后台触发 agents 刷新，不阻塞当前流程（动态 import 避免循环依赖）
+    setImmediate(() => {
+      import('../agents/agentsManager').then(({ getAgentsManager }) => {
+        getAgentsManager().refreshAgentsInfo().catch((err: unknown) => logError(`插件变更后刷新 Agents 失败: ${err}`))
+      }).catch(() => {})
+    })
+
     return info
   }
 

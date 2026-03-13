@@ -15,6 +15,7 @@ import { getSemaRootDir, getClaudeRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
 import { parseFile } from '../../util/formatter'
 import { defaultBuiltInAgentsConfs } from './defaultBuiltInAgentsConfs'
+import { getPluginsManager } from '../plugins/pluginsManager'
 
 /**
  * Agents 管理器类 - 单例模式
@@ -64,8 +65,8 @@ class AgentsManager {
 
   /**
    * 加载 Agents 配置（内部方法）
-   * 按优先级加载：用户级(Claude) -> 项目级(Claude) -> 内置 -> 用户级(Sema) -> 项目级(Sema)
-   * 后加载的覆盖先加载的，优先级从高到低：项目级(Sema) > 用户级(Sema) > 内置 > 项目级(Claude) > 用户级(Claude)
+   * 按优先级加载：用户级(Claude) -> 项目级(Claude) -> 内置 -> 插件 -> 用户级(Sema) -> 项目级(Sema)
+   * 后加载的覆盖先加载的，优先级从高到低：项目级(Sema) > 用户级(Sema) > 插件 > 内置 > 项目级(Claude) > 用户级(Claude)
    */
   private async loadAgents(): Promise<void> {
     // 清空现有配置
@@ -81,10 +82,13 @@ class AgentsManager {
     // 3. 内置 agents
     this.loadBuiltInAgents()
 
-    // 4. 用户级(Sema)
+    // 4. 插件 agents
+    await this.loadAgentsFromPlugins()
+
+    // 5. 用户级(Sema)
     await this.loadAgentsFromDir(this.semaUserAgentsDir, 'user', 'sema')
 
-    // 5. 项目级(Sema) - 最高优先级
+    // 6. 项目级(Sema) - 最高优先级
     await this.loadAgentsFromDir(this.semaProjectAgentsDir, 'project', 'sema')
 
     const agentNames = Array.from(this.agentConfigs.keys()).join(', ')
@@ -105,6 +109,43 @@ class AgentsManager {
       this.agentConfigs.set(config.name, fullConfig)
     }
     logDebug(`加载内置 Agents: ${defaultBuiltInAgentsConfs.length} 个`)
+  }
+
+  /**
+   * 从已安装且启用的插件中加载 agents
+   * agent 名格式：插件名:agent名，scope 为 'plugin'
+   */
+  private async loadAgentsFromPlugins(): Promise<void> {
+    try {
+      const pluginsInfo = await getPluginsManager().getMarketplacePluginsInfo()
+      const enabledPlugins = pluginsInfo.plugins.filter(p => p.status)
+
+      let loadedCount = 0
+      for (const plugin of enabledPlugins) {
+        for (const agentEntry of plugin.components.agents) {
+          const agentConfig = await this.parseAgentFile(agentEntry.filePath)
+          if (agentConfig) {
+            const pluginAgentName = `${plugin.name}:${agentConfig.name}`
+            if (this.agentConfigs.has(pluginAgentName)) {
+              logDebug(`Agent [${pluginAgentName}] 被插件配置覆盖`)
+            }
+            this.agentConfigs.set(pluginAgentName, {
+              ...agentConfig,
+              name: pluginAgentName,
+              locate: 'plugin',
+              from: plugin.from
+            })
+            loadedCount++
+          }
+        }
+      }
+
+      if (loadedCount > 0) {
+        logDebug(`加载插件 Agents: ${loadedCount} 个`)
+      }
+    } catch (error) {
+      logError(`加载插件 Agents 失败: ${error}`)
+    }
   }
 
   /**

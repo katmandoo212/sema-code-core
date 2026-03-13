@@ -1,6 +1,6 @@
 import type { Tool } from '../tools/base/Tool'
 
-export type AgentScope = 'user' | 'project' | 'builtin'
+export type AgentScope = 'user' | 'project' | 'builtin' | 'plugin'
 
 export interface AgentConfig {
   name: string

@@ -72,27 +72,66 @@ function findFrontmatterStart(content: string): number {
 
 /**
  * 简单 YAML 解析
- * 支持：字符串、带引号字符串、["a","b"] 风格数组、行内注释
+ * 支持：字符串、带引号字符串、["a","b"] 风格数组、行内注释、块标量（| 和 >）
  */
 function parseYaml(yamlStr: string): ClaudeFileMetadata {
   const result: ClaudeFileMetadata = {}
   const lines = yamlStr.split(/\r?\n/)
+  let i = 0
 
-  for (let line of lines) {
+  while (i < lines.length) {
+    let line = lines[i]
+
     // 去除行内注释（保留 value 中的 # 不受影响，仅去除空格后的 #）
     const commentIdx = line.indexOf(' #')
     if (commentIdx !== -1) line = line.slice(0, commentIdx)
     line = line.trim()
 
-    if (!line || line.startsWith('#')) continue
+    if (!line || line.startsWith('#')) {
+      i++
+      continue
+    }
 
     const colonIdx = line.indexOf(':')
-    if (colonIdx === -1) continue
+    if (colonIdx === -1) {
+      i++
+      continue
+    }
 
     const key = line.slice(0, colonIdx).trim()
-    if (!key) continue
+    if (!key) {
+      i++
+      continue
+    }
 
     let value = line.slice(colonIdx + 1).trim()
+
+    // 块标量：|（字面量）或 >（折叠）
+    if (value === '|' || value === '>') {
+      const isFolded = value === '>'
+      i++
+      const blockLines: string[] = []
+      let baseIndent = -1
+      while (i < lines.length) {
+        const raw = lines[i].replace(/\r$/, '')
+        if (raw.trim() === '') {
+          blockLines.push('')
+          i++
+          continue
+        }
+        const indent = raw.length - raw.trimStart().length
+        if (baseIndent === -1) baseIndent = indent
+        if (indent < baseIndent) break
+        blockLines.push(raw.slice(baseIndent))
+        i++
+      }
+      // 移除末尾空行
+      while (blockLines.length > 0 && blockLines[blockLines.length - 1] === '') {
+        blockLines.pop()
+      }
+      result[key] = isFolded ? blockLines.join(' ') : blockLines.join('\n')
+      continue
+    }
 
     // 数组格式：["a", "b"] 或 ['a', 'b'] 或 [a, b]
     if (value.startsWith('[') && value.endsWith(']')) {
@@ -101,6 +140,7 @@ function parseYaml(yamlStr: string): ClaudeFileMetadata {
         .split(',')
         .map(v => v.trim().replace(/^["']|["']$/g, ''))
         .filter(Boolean)
+      i++
       continue
     }
 
@@ -114,6 +154,7 @@ function parseYaml(yamlStr: string): ClaudeFileMetadata {
     }
 
     result[key] = value
+    i++
   }
 
   return result

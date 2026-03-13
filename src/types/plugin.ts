@@ -79,11 +79,17 @@ export interface PluginSettings {
   [key: string]: any
 }
 
+/** 插件组件条目 */
+export interface PluginComponentEntry {
+  name: string
+  filePath: string
+}
+
 /** 插件组件信息 */
 export interface PluginComponents {
-  commands: string[]
-  agents: string[]
-  skills: string[]
+  commands: PluginComponentEntry[]
+  agents: PluginComponentEntry[]
+  skills: PluginComponentEntry[]
 }
 
 /** 返回结果中的市场信息 */
