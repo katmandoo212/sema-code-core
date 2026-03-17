@@ -4,14 +4,14 @@ import { MCPServerConfig, MCPScopeType, MCPServerInfo } from '../types/mcp';
 import { ToolPermissionResponse, AskQuestionResponseData, PlanExitResponseData } from '../events/types';
 import { fetchModels, testApiConnection } from '../services/api/apiUtil';
 import { getMCPManager, initMCPManager } from '../services/mcp/MCPManager';
-import { getCachedCustomCommands, reloadCustomCommands as reloadCustomCommandsImpl } from '../services/command/customCommands';
-import { CustomCommand } from '../types/command';
 import { getPluginsManager } from '../services/plugins/pluginsManager';
 import { PluginScope, MarketplacePluginsInfo } from '../types/plugin';
 import { getAgentsManager } from '../services/agents/agentsManager';
 import { AgentConfig } from '../types/agent';
-import { getSkillsManager } from '../services/skill/skillsManager';
+import { getSkillsManager } from '../services/skills/skillsManager';
 import { SkillConfig } from '../types/skill';
+import { getCommandsManager } from '../services/commands/commandsManager';
+import { CommandConfig } from '../types/command';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -98,10 +98,6 @@ export class SemaCore {
   connectMCPServer = (name: string): Promise<MCPServerInfo> => getMCPManager().connectMCPServer(name);
   updateMCPUseTools = (name: string, toolNames: string[] | null): boolean => getMCPManager().updateMCPUseTools(name, toolNames);
 
-  // ==================== Custom Commands 管理 ====================
-  getCustomCommands = (): Promise<CustomCommand[]> => getCachedCustomCommands();
-  reloadCustomCommands = (): void => reloadCustomCommandsImpl();
-
   // ==================== 插件市场管理 ====================
   addMarketplaceFromGit = (repo: string): Promise<MarketplacePluginsInfo> => getPluginsManager().addMarketplaceFromGit(repo);
   addMarketplaceFromDirectory = (dirPath: string): Promise<MarketplacePluginsInfo> => getPluginsManager().addMarketplaceFromDirectory(dirPath);
@@ -124,6 +120,13 @@ export class SemaCore {
   // ==================== Skills 管理 ====================
   getSkillsInfo = (): Promise<SkillConfig[]> => getSkillsManager().getSkillsInfo();
   refreshSkillsInfo = (): Promise<SkillConfig[]> => getSkillsManager().refreshSkillsInfo();
+  removeSkillConf = (name: string): Promise<SkillConfig[]> => getSkillsManager().removeSkillConf(name);
+
+  // ==================== Commands 管理 ====================
+  getCommandsInfo = (): Promise<CommandConfig[]> => getCommandsManager().getCommandsInfo();
+  refreshCommandsInfo = (): Promise<CommandConfig[]> => getCommandsManager().refreshCommandsInfo();
+  addCommandConf = (commandConf: CommandConfig): Promise<CommandConfig[]> => getCommandsManager().addCommandConf(commandConf);
+  removeCommandConf = (name: string): Promise<CommandConfig[]> => getCommandsManager().removeCommandConf(name);
 
   // ==================== 资源管理 ====================
   dispose = async () => {

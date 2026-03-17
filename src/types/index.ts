@@ -122,6 +122,12 @@ export type {
   MCPServerInfo
 } from './mcp';
 
+// 导出 command 相关类型
+export type {
+  CommandScope,
+  CommandConfig,
+} from './command';
+
 // 导出 skill 相关类型
 export type {
   SkillScope,

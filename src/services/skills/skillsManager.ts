@@ -269,6 +269,46 @@ class SkillsManager {
   }
 
   /**
+   * 移除 Skill 配置
+   * Claude 来源为只读，不可移除；插件 Skill 不可移除
+   */
+  async removeSkillConf(name: string): Promise<SkillConfig[]> {
+    const skillConf = this.skillConfigs.get(name)
+    if (!skillConf) {
+      logWarn(`移除 Skill 失败: 未找到 [${name}]`)
+      return this.getSkillsInfo()
+    }
+
+    if (skillConf.from === 'claude') {
+      logWarn(`移除 Skill 失败: Claude 来源为只读 [${name}]`)
+      return this.getSkillsInfo()
+    }
+
+    if (skillConf.locate === 'plugin') {
+      logWarn(`移除 Skill 失败: 插件 Skill 不可移除 [${name}]`)
+      return this.getSkillsInfo()
+    }
+
+    this.skillConfigs.delete(name)
+    this.invalidateCache()
+
+    // 删除 skill 目录
+    const targetDir = skillConf.locate === 'user' ? this.semaUserSkillsDir : this.semaProjectSkillsDir
+    const skillDirPath = path.join(targetDir, name)
+    try {
+      if (fs.existsSync(skillDirPath)) {
+        await fsPromises.rm(skillDirPath, { recursive: true })
+        logInfo(`Skill 目录已删除: ${skillDirPath}`)
+      }
+    } catch (error) {
+      logError(`删除 Skill 目录失败 [${skillDirPath}]: ${error}`)
+    }
+
+    logInfo(`移除 Skill 配置: ${name}`)
+    return this.refreshSkillsInfo()
+  }
+
+  /**
    * 清理资源
    */
   dispose(): void {
