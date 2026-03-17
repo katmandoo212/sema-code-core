@@ -292,13 +292,23 @@ class SkillsManager {
     this.skillConfigs.delete(name)
     this.invalidateCache()
 
-    // 删除 skill 目录
+    // 删除 SKILL.md 所在目录
     const targetDir = skillConf.locate === 'user' ? this.semaUserSkillsDir : this.semaProjectSkillsDir
-    const skillDirPath = path.join(targetDir, name)
+    const skillDirPath = skillConf.filePath ? path.dirname(skillConf.filePath) : path.join(targetDir, name)
     try {
       if (fs.existsSync(skillDirPath)) {
         await fsPromises.rm(skillDirPath, { recursive: true })
         logInfo(`Skill 目录已删除: ${skillDirPath}`)
+
+        // 如果父目录为空则一并删除
+        const parentDir = path.dirname(skillDirPath)
+        if (parentDir !== targetDir) {
+          const siblings = await fsPromises.readdir(parentDir)
+          if (siblings.length === 0) {
+            await fsPromises.rm(parentDir, { recursive: true })
+            logDebug(`Skill 空目录已删除: ${parentDir}`)
+          }
+        }
       }
     } catch (error) {
       logError(`删除 Skill 目录失败 [${skillDirPath}]: ${error}`)

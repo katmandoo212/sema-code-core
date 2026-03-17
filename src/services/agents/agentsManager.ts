@@ -433,16 +433,26 @@ class AgentsManager {
     this.agentConfigs.delete(name)
     this.invalidateCache()
 
-    // 删除文件
+    // 删除 agent 文件
     const targetDir = agentConf.locate === 'user' ? this.semaUserAgentsDir : this.semaProjectAgentsDir
-    const filePath = path.join(targetDir, `${name}.md`)
+    const agentFilePath = agentConf.filePath ?? path.join(targetDir, `${name}.md`)
     try {
-      if (fs.existsSync(filePath)) {
-        await fsPromises.unlink(filePath)
-        logInfo(`Agent 配置文件已删除: ${filePath}`)
+      if (fs.existsSync(agentFilePath)) {
+        await fsPromises.unlink(agentFilePath)
+        logInfo(`Agent 配置文件已删除: ${agentFilePath}`)
+
+        // 如果父目录为空则一并删除
+        const parentDir = path.dirname(agentFilePath)
+        if (parentDir !== targetDir) {
+          const siblings = await fsPromises.readdir(parentDir)
+          if (siblings.length === 0) {
+            await fsPromises.rm(parentDir, { recursive: true })
+            logDebug(`Agent 空目录已删除: ${parentDir}`)
+          }
+        }
       }
     } catch (error) {
-      logError(`删除 Agent 配置文件失败 [${filePath}]: ${error}`)
+      logError(`删除 Agent 配置文件失败 [${agentFilePath}]: ${error}`)
     }
 
     logInfo(`移除 Agent 配置: ${name}`)
