@@ -52,6 +52,7 @@
     "events": "^3.3.0",
     "glob": "^13.0.0",
     "gray-matter": "^4.0.3",
+    "iconv-lite": "^0.6.3",
     "jimp": "^0.22.12",
     "lodash-es": "^4.17.21",
     "lru-cache": "^11.2.4",

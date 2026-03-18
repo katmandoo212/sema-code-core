@@ -5,6 +5,7 @@ import { spawn, execSync, type ChildProcess } from 'child_process'
 import { isAbsolute, resolve, join } from 'path'
 import * as os from 'os'
 import * as crypto from 'crypto'
+import * as iconv from 'iconv-lite'
 import { logError, logInfo, logWarn } from './log'
 import { IS_WIN, nativeToShellPath, splitPathEntries } from './platform'
 
@@ -14,6 +15,45 @@ type ExecResult = {
   stderr: string
   code: number
   interrupted: boolean
+}
+
+/**
+ * 智能解码 Buffer 为字符串（仅 Windows 需要）
+ * 优先尝试 UTF-8，如果检测到乱码则尝试 GBK
+ */
+function smartDecode(buffer: Buffer): string {
+  if (buffer.length === 0) return ''
+
+  // 非 Windows 系统直接使用 UTF-8
+  if (!IS_WIN) {
+    return buffer.toString('utf8')
+  }
+
+  // Windows: 先尝试 UTF-8
+  const utf8Text = buffer.toString('utf8')
+
+  // 检测 UTF-8 解码是否产生了替换字符（�）
+  // 这是 UTF-8 解码失败的标志
+  const hasReplacementChar = utf8Text.includes('\uFFFD')
+
+  // 如果没有替换字符，说明 UTF-8 解码成功
+  if (!hasReplacementChar) {
+    return utf8Text
+  }
+
+  // UTF-8 失败，尝试 GBK
+  try {
+    if (iconv.encodingExists('gbk')) {
+      const gbkText = iconv.decode(buffer, 'gbk')
+      logInfo('检测到非 UTF-8 输出，使用 GBK 解码')
+      return gbkText
+    }
+  } catch (error) {
+    logWarn(`GBK 解码失败: ${error}`)
+  }
+
+  // 兜底：返回 UTF-8 结果
+  return utf8Text
 }
 
 // 队列中的命令类型定义
@@ -688,10 +728,10 @@ export class PersistentShell {
           ) {
             clearInterval(checkCompletion)
             const stdout = fs.existsSync(this.stdoutFile)
-              ? fs.readFileSync(this.stdoutFile, 'utf8')
+              ? smartDecode(fs.readFileSync(this.stdoutFile))
               : ''
             let stderr = fs.existsSync(this.stderrFile)
-              ? fs.readFileSync(this.stderrFile, 'utf8')
+              ? smartDecode(fs.readFileSync(this.stderrFile))
               : ''
             let code: number
             if (statusFileSize) {
