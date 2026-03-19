@@ -109,19 +109,6 @@ export interface ToolInfo {
   status: 'enable' | 'disable'
 }
 
-// 导出 MCP 相关类型
-export type {
-  MCPTransportType,
-  MCPScopeType,
-  MCPServerConfig,
-  MCPToolDefinition,
-  MCPResourceDefinition,
-  MCPPromptDefinition,
-  MCPServerCapabilities,
-  MCPServerStatus,
-  MCPServerInfo
-} from './mcp';
-
 // 导出 command 相关类型
 export type {
   CommandScope,
@@ -147,3 +134,9 @@ export type {
   PluginScope,
   MarketplacePluginsInfo
 } from './plugin';
+
+// 导出 MCP 相关类型
+export type {
+  MCPServerConfig,
+  MCPServerInfo
+} from './mcp';
