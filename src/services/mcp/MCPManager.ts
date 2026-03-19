@@ -22,6 +22,7 @@ import { logDebug, logError, logInfo, logWarn } from '../../util/log'
 import { EventBus } from '../../events/EventSystem'
 import { getSemaRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
+import { getConfManager } from '../../manager/ConfManager'
 
 /** Sema settings 文件结构（部分） */
 interface SemaSettings {
@@ -228,6 +229,7 @@ class MCPManager {
   private async loadMCPsFromPlugins(
     serverMap: Map<string, MCPServerInfo>,
     claudeDisabled: Set<string>,
+    semaDisabled: Set<string>,
     semaUseToolsMap: Record<string, string[]>
   ): Promise<void> {
     try {
@@ -260,9 +262,9 @@ class MCPManager {
               from: plugin.from,
               scope: 'plugin'
             }
-            const status = !claudeDisabled.has(pluginServerName)
-            // claude 来源的插件 MCP，若已被禁用则跳过
-            if (plugin.from === 'claude' && !status) continue
+            const status = !claudeDisabled.has(pluginServerName) && !semaDisabled.has(pluginServerName)
+            // claude 来源的插件 MCP，若已被 claude 禁用则跳过
+            if (plugin.from === 'claude' && claudeDisabled.has(pluginServerName)) continue
             const useTools = pluginServerName in semaUseToolsMap ? semaUseToolsMap[pluginServerName] : undefined
             serverMap.set(pluginServerName, this.newServerInfo(config, status, useTools, mcpEntry.filePath))
             loadedCount++
@@ -285,21 +287,22 @@ class MCPManager {
    */
   private async loadServers(): Promise<void> {
     const serverMap = new Map<string, MCPServerInfo>()
-    const claudeDisabled = this.getClaudeDisabledServers()
-    const claudeProjectSettings = this.getClaudeProjectSettings()
-    const claudeGlobal = this.getClaudeGlobalConfig()
+    const enableClaudeCodeCompat = getConfManager().getCoreConfig()?.enableClaudeCodeCompat !== false
+    const claudeDisabled = enableClaudeCodeCompat ? this.getClaudeDisabledServers() : new Set<string>()
+    const claudeProjectSettings = enableClaudeCodeCompat ? this.getClaudeProjectSettings() : { enableAll: false, enabled: new Set<string>() }
+    const claudeGlobal = enableClaudeCodeCompat ? this.getClaudeGlobalConfig() : null
     const semaSettings = this.readSemaSettings()
     const semaDisabled = new Set<string>(semaSettings.disabledMcpServers ?? [])
     const semaUseToolsMap: Record<string, string[]> = semaSettings.enabledMcpServerUseTools ?? {}
 
     // 1. Claude 用户级：~/.claude.json -> mcpServers
-    if (claudeGlobal?.mcpServers && typeof claudeGlobal.mcpServers === 'object') {
+    if (enableClaudeCodeCompat && claudeGlobal?.mcpServers && typeof claudeGlobal.mcpServers === 'object') {
       let count = 0
       for (const [name, raw] of Object.entries<any>(claudeGlobal.mcpServers)) {
         const config = this.parseClaudeEntry(name, raw, 'user')
         if (config) {
           const useTools = name in semaUseToolsMap ? semaUseToolsMap[name] : undefined
-          serverMap.set(name, this.newServerInfo(config, !claudeDisabled.has(name), useTools, this.claudeGlobalConfigPath))
+          serverMap.set(name, this.newServerInfo(config, !claudeDisabled.has(name) && !semaDisabled.has(name), useTools, this.claudeGlobalConfigPath))
           count++
         }
       }
@@ -308,41 +311,46 @@ class MCPManager {
 
     // 2. Claude 本地级：~/.claude.json -> projects[cwd].mcpServers
     const cwd = getOriginalCwd()
-    const localServers = claudeGlobal?.projects?.[cwd]?.mcpServers
-    if (localServers && typeof localServers === 'object') {
-      let count = 0
-      for (const [name, raw] of Object.entries<any>(localServers)) {
-        const config = this.parseClaudeEntry(name, raw, 'local')
-        if (config) {
-          const useTools = name in semaUseToolsMap ? semaUseToolsMap[name] : undefined
-          serverMap.set(name, this.newServerInfo(config, !claudeDisabled.has(name), useTools, this.claudeGlobalConfigPath))
-          count++
+    if (enableClaudeCodeCompat) {
+      const localServers = claudeGlobal?.projects?.[cwd]?.mcpServers
+      if (localServers && typeof localServers === 'object') {
+        let count = 0
+        for (const [name, raw] of Object.entries<any>(localServers)) {
+          const config = this.parseClaudeEntry(name, raw, 'local')
+          if (config) {
+            const useTools = name in semaUseToolsMap ? semaUseToolsMap[name] : undefined
+            serverMap.set(name, this.newServerInfo(config, !claudeDisabled.has(name) && !semaDisabled.has(name), useTools, this.claudeGlobalConfigPath))
+            count++
+          }
         }
+        if (count > 0) logDebug(`加载 Claude 本地级 MCP: ${count} 个`)
       }
-      if (count > 0) logDebug(`加载 Claude 本地级 MCP: ${count} 个`)
     }
 
     // 3. Claude 项目级：<project>/.mcp.json
     // 需要 enableAllProjectMcpServers 为 true 且在 enabledMcpjsonServers 中才生效
-    const claudeProjectServers = this.readMcpServers(this.claudeProjectConfigPath)
-    if (claudeProjectServers) {
-      let count = 0
-      for (const [name, raw] of Object.entries<any>(claudeProjectServers)) {
-        const config = this.parseClaudeEntry(name, raw, 'project')
-        if (config) {
-          const status = !claudeDisabled.has(name)
-            && claudeProjectSettings.enableAll
-            && claudeProjectSettings.enabled.has(name)
-          const useTools = name in semaUseToolsMap ? semaUseToolsMap[name] : undefined
-          serverMap.set(name, this.newServerInfo(config, status, useTools, this.claudeProjectConfigPath))
-          count++
+    if (enableClaudeCodeCompat) {
+      const claudeProjectServers = this.readMcpServers(this.claudeProjectConfigPath)
+      if (claudeProjectServers) {
+        let count = 0
+        for (const [name, raw] of Object.entries<any>(claudeProjectServers)) {
+          const config = this.parseClaudeEntry(name, raw, 'project')
+          if (config) {
+            const status = !claudeDisabled.has(name)
+              && !semaDisabled.has(name)
+              && claudeProjectSettings.enableAll
+              && claudeProjectSettings.enabled.has(name)
+            const useTools = name in semaUseToolsMap ? semaUseToolsMap[name] : undefined
+            serverMap.set(name, this.newServerInfo(config, status, useTools, this.claudeProjectConfigPath))
+            count++
+          }
         }
+        if (count > 0) logDebug(`加载 Claude 项目级 MCP: ${count} 个`)
       }
-      if (count > 0) logDebug(`加载 Claude 项目级 MCP: ${count} 个`)
     }
 
     // 4. 插件 MCP：从已安装且启用的插件中加载
-    await this.loadMCPsFromPlugins(serverMap, claudeDisabled, semaUseToolsMap)
+    await this.loadMCPsFromPlugins(serverMap, claudeDisabled, semaDisabled, semaUseToolsMap)
 
     // 5. Sema 用户级：~/.sema/.mcp.json
     const semaUserServers = this.readMcpServers(this.semaUserConfigPath)

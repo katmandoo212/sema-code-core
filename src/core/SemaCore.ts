@@ -76,8 +76,18 @@ export class SemaCore {
 
   // ==================== 配置管理 ====================
   // 更新核心配置
-  updateCoreConfByKey = <K extends UpdatableCoreConfigKeys>(key: K, value: SemaCoreConfig[K]): void => getConfManager().updateCoreConfByKey(key, value);
-  updateCoreConfig = (config: UpdatableCoreConfig): void => getConfManager().updateCoreConfig(config);
+  updateCoreConfByKey = <K extends UpdatableCoreConfigKeys>(key: K, value: SemaCoreConfig[K]): void => {
+    getConfManager().updateCoreConfByKey(key, value);
+    if (key === 'enableClaudeCodeCompat') {
+      getPluginsManager().refreshMarketplacePluginsInfo().catch(() => {});
+    }
+  };
+  updateCoreConfig = (config: UpdatableCoreConfig): void => {
+    getConfManager().updateCoreConfig(config);
+    if ('enableClaudeCodeCompat' in config) {
+      getPluginsManager().refreshMarketplacePluginsInfo().catch(() => {});
+    }
+  };
   updateUseTools = (toolNames: string[] | null): void => getConfManager().updateUseTools(toolNames);
   updateAgentMode = (mode: 'Agent' | 'Plan'): void => this.engine.updateAgentMode(mode);
   getToolInfos = (): ToolInfo[] => getToolInfos();

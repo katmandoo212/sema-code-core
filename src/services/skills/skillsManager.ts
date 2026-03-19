@@ -14,6 +14,7 @@ import { getSemaRootDir, getClaudeRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
 import { parseFile } from '../../util/formatter'
 import { getPluginsManager } from '../plugins/pluginsManager'
+import { getConfManager } from '../../manager/ConfManager'
 import { SkillConfig } from '../../types/skill'
 
 
@@ -71,11 +72,17 @@ class SkillsManager {
     // 清空现有配置
     this.skillConfigs.clear()
 
+    const enableClaudeCodeCompat = getConfManager().getCoreConfig()?.enableClaudeCodeCompat !== false
+
     // 1. 用户级(Claude) - 最低优先级
-    await this.loadSkillsFromDir(this.claudeUserSkillsDir, 'user', 'claude')
+    if (enableClaudeCodeCompat) {
+      await this.loadSkillsFromDir(this.claudeUserSkillsDir, 'user', 'claude')
+    }
 
     // 2. 项目级(Claude)
-    await this.loadSkillsFromDir(this.claudeProjectSkillsDir, 'project', 'claude')
+    if (enableClaudeCodeCompat) {
+      await this.loadSkillsFromDir(this.claudeProjectSkillsDir, 'project', 'claude')
+    }
 
     // 3. 插件 skills
     await this.loadSkillsFromPlugins()

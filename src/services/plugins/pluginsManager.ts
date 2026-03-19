@@ -11,6 +11,7 @@ import * as path from 'path'
 import { logDebug, logError, logInfo, logWarn } from '../../util/log'
 import { getSemaRootDir, getClaudeRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
+import { getConfManager } from '../../manager/ConfManager'
 import { execFileNoThrow } from '../../util/exec'
 import type {
   PluginScope,
@@ -765,6 +766,8 @@ class PluginsManager {
     logDebug('刷新市场插件信息...')
     this.invalidateCache()
 
+    const enableClaudeCodeCompat = getConfManager().getCoreConfig()?.enableClaudeCodeCompat !== false
+
     const [
       known, installed, enabledPluginsMap,
       claudeKnown, claudeInstalled, claudeEnabledPluginsMap
@@ -772,14 +775,16 @@ class PluginsManager {
       this.readKnownMarketplaces(),
       this.readInstalledPlugins(),
       this.loadAllEnabledPlugins(),
-      this.readClaudeKnownMarketplaces(),
-      this.readClaudeInstalledPlugins(),
-      this.loadClaudeEnabledPlugins()
+      enableClaudeCodeCompat ? this.readClaudeKnownMarketplaces() : Promise.resolve({} as KnownMarketplaces),
+      enableClaudeCodeCompat ? this.readClaudeInstalledPlugins() : Promise.resolve({ plugins: {} } as InstalledPlugins),
+      enableClaudeCodeCompat ? this.loadClaudeEnabledPlugins() : Promise.resolve({ local: {}, project: {}, user: {} } as Record<PluginScope, Record<string, boolean>>)
     ])
 
     const [semaResult, claudeResult] = await Promise.all([
       this.buildMarketplaceResult(known, installed, enabledPluginsMap, 'sema'),
-      this.buildMarketplaceResult(claudeKnown, claudeInstalled, claudeEnabledPluginsMap, 'claude')
+      enableClaudeCodeCompat
+        ? this.buildMarketplaceResult(claudeKnown, claudeInstalled, claudeEnabledPluginsMap, 'claude')
+        : Promise.resolve({ marketplaces: [], plugins: [] })
     ])
 
     const info: MarketplacePluginsInfo = {

@@ -16,6 +16,7 @@ import { getOriginalCwd } from '../../util/cwd'
 import { parseFile } from '../../util/formatter'
 import { defaultBuiltInAgentsConfs } from './defaultBuiltInAgentsConfs'
 import { getPluginsManager } from '../plugins/pluginsManager'
+import { getConfManager } from '../../manager/ConfManager'
 
 /**
  * Agents 管理器类 - 单例模式
@@ -72,12 +73,18 @@ class AgentsManager {
     // 清空现有配置
     this.agentConfigs.clear()
 
+    const enableClaudeCodeCompat = getConfManager().getCoreConfig()?.enableClaudeCodeCompat !== false
+
     // 按优先级顺序加载（后加载的覆盖先加载的）
     // 1. 用户级(Claude) - 最低优先级
-    await this.loadAgentsFromDir(this.claudeUserAgentsDir, 'user', 'claude')
+    if (enableClaudeCodeCompat) {
+      await this.loadAgentsFromDir(this.claudeUserAgentsDir, 'user', 'claude')
+    }
 
     // 2. 项目级(Claude)
-    await this.loadAgentsFromDir(this.claudeProjectAgentsDir, 'project', 'claude')
+    if (enableClaudeCodeCompat) {
+      await this.loadAgentsFromDir(this.claudeProjectAgentsDir, 'project', 'claude')
+    }
 
     // 3. 内置 agents
     this.loadBuiltInAgents()

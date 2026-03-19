@@ -13,10 +13,11 @@ export interface SemaCoreConfig {
   useTools?: string[] | null;        // 限定使用的工具 默认 null 使用所有工具
   agentMode?: 'Agent' | 'Plan' ;     // 默认 'Agent'
   disableTopicDetection?: boolean;   // 是否禁用话题检测，默认 否
+  enableClaudeCodeCompat?: boolean;   // 是否兼容ClaudeCode生态，默认 是
 }
 
 // 支持动态更新的核心配置字段
-export type UpdatableCoreConfigKeys = 'stream' | 'thinking' | 'systemPrompt' | 'customRules' | 'skipFileEditPermission' | 'skipBashExecPermission' | 'skipSkillPermission' | 'skipMCPToolPermission' | 'enableLLMCache';
+export type UpdatableCoreConfigKeys = 'stream' | 'thinking' | 'systemPrompt' | 'customRules' | 'skipFileEditPermission' | 'skipBashExecPermission' | 'skipSkillPermission' | 'skipMCPToolPermission' | 'enableLLMCache' | 'enableClaudeCodeCompat';
 
 // 默认核心配置
 export const defaultCoreConfig = {
@@ -28,7 +29,8 @@ export const defaultCoreConfig = {
   skipMCPToolPermission: false,
   systemPrompt: "You are Sema, AIRC's Agent AI for coding.",
   customRules: "- 中文回答",
-  enableLLMCache: false
+  enableLLMCache: false,
+  enableClaudeCodeCompat: true
 };
 
 // 可更新的核心配置类型（基于默认配置）
