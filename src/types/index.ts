@@ -142,3 +142,8 @@ export type {
   MCPServerConfig,
   MCPServerInfo
 } from './mcp';
+
+// 导出 Mem 相关类型
+export type {
+  MemoryConfig
+} from './memory';

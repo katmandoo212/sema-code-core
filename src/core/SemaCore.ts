@@ -12,6 +12,8 @@ import { getCommandsManager } from '../services/commands/commandsManager';
 import { CommandConfig } from '../types/command';
 import { getMCPManager } from '../services/mcp/MCPManager';
 import { MCPServerConfig, MCPServerInfo } from '../types/mcp';
+import { getMemoryManager } from '../services/memory/memManager';
+import { MemoryConfig } from '../types/memory';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -33,6 +35,7 @@ export class SemaCore {
 
     this.configPromise = this.configPromise.then(async () => {
       getPluginsManager(); // 触发单例初始化，后台加载市场插件信息
+      getMemoryManager(); // 触发单例初始化，后台加载 memory 信息
     });
     logInfo(`初始化SemaCore: ${JSON.stringify(config, null, 2)}`)
   }
@@ -80,12 +83,14 @@ export class SemaCore {
     getConfManager().updateCoreConfByKey(key, value);
     if (key === 'enableClaudeCodeCompat') {
       getPluginsManager().refreshMarketplacePluginsInfo().catch(() => {});
+      getMemoryManager().refreshMemoryInfo().catch(() => {});
     }
   };
   updateCoreConfig = (config: UpdatableCoreConfig): void => {
     getConfManager().updateCoreConfig(config);
     if ('enableClaudeCodeCompat' in config) {
       getPluginsManager().refreshMarketplacePluginsInfo().catch(() => {});
+      getMemoryManager().refreshMemoryInfo().catch(() => {});
     }
   };
   updateUseTools = (toolNames: string[] | null): void => getConfManager().updateUseTools(toolNames);
@@ -138,6 +143,9 @@ export class SemaCore {
   enableMCPServer = (name: string): Promise<MCPServerInfo[]> => getMCPManager().enableMCPServer(name);
   updateMCPUseTools = (name: string, toolNames: string[]): Promise<MCPServerInfo[]> => getMCPManager().updateMCPUseTools(name, toolNames);
 
+  // ==================== Memory 管理 ====================
+  getMemoryInfo = (): Promise<MemoryConfig | null> => getMemoryManager().getMemoryInfo();
+  refreshMemoryInfo = (): Promise<MemoryConfig | null> => getMemoryManager().refreshMemoryInfo();
 
   // ==================== 资源管理 ====================
   dispose = async () => {

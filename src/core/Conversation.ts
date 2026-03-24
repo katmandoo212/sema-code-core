@@ -281,9 +281,7 @@ async function handleControlSignalRebuild(
   }
 
   // 重新生成系统提示
-  const hasTodoWriteTool = newTools.some(tool => tool.name === 'TodoWrite')
-  const hasAskUserQuestionTool = newTools.some(tool => tool.name === 'AskUserQuestion')
-  const newSystemPromptContent = await formatSystemPrompt({ hasTodoWriteTool, hasAskUserQuestionTool })
+  const newSystemPromptContent = await formatSystemPrompt()
 
   // 根据 rebuildMessage 决定消息历史
   // 如果有 rebuildMessage，说明需要清理上下文，保留新的用户消息并添加首次查询的额外信息

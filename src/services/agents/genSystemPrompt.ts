@@ -6,35 +6,34 @@ import { memoize } from 'lodash-es'
 import { getConfManager } from '../../manager/ConfManager'
 import { getOriginalCwd } from '../../util/cwd'
 import * as path from 'path';
+import { getMemoryManager } from '../memory/memManager'
 import { 
   Agent_Summary_Prompt,
-  Style_and_Professional_Prompt,
-  Ask_Question_Prompt,
+  System_Prompt,
   Doing_Tasks_Prompt,
-  Tool_Usage_Policy_Prompt,
-  Code_References_Prompt,
-  Empty_Todo_Reminder_Prompt,
-  With_TodoWrite_Prompt, 
-  Without_TodoWrite_Prompt, 
+  Executing_actions_with_care_Prompt,
+  Using_your_tools_Prompt,
+  Tone_and_style_Prompt,
+  auto_memory_Prompt,
   PlanMode_Reminder_Prompt,
   SUBAGENT_NOTES
 } from './prompt'
 
-export async function formatSystemPrompt(options?: { hasTodoWriteTool?: boolean, hasAskUserQuestionTool?: boolean }): Promise<Array<{ type: 'text', text: string }>> {
+export async function formatSystemPrompt(): Promise<Array<{ type: 'text', text: string }>> {
   // 获取系统提示、上下文
   const context = await getContext()
 
   // 合并系统提示，每个部分作为独立的 text 内容
   const systemPromptParts = [
     getProductSyspromptPrefix(),
-    getSystemPrompt(context, options)
+    getSystemPrompt(context)
   ].filter(prompt => prompt.trim().length > 0); // 过滤空提示
 
   // 转换为 text 内容数组格式
   return systemPromptParts.map(text => ({ type: 'text' as const, text }));
 }
 
-export const getContext = memoize(
+const getContext = memoize(
   async (): Promise<{
     [k: string]: string
   }> => {
@@ -51,6 +50,65 @@ export const getContext = memoize(
     }
   }
 )
+
+function getProductSyspromptPrefix(): string {
+  try {
+    // 尝试从配置管理器中获取自定义的 systemPrompt
+    const configManager = getConfManager();
+    const coreConfig = configManager.getCoreConfig();
+
+    if (coreConfig?.systemPrompt) {
+      return coreConfig.systemPrompt;
+    }
+  } catch (error) {
+  }
+
+  // 如果没有配置自定义 systemPrompt，使用默认值
+  return `You are ${PRODUCT_NAME}, ${GROUP}'s Agent AI for coding.`;
+}
+
+function getSystemPrompt(context: Record<string, any> = {}): string {
+  const memoryDir = getMemoryManager().getActiveMemoryDir()
+  const auto_memory_Prompt_Pro = auto_memory_Prompt.replace('MEMORY_PATH_DIR', memoryDir)
+
+  return `
+${Agent_Summary_Prompt}
+
+${System_Prompt}
+
+${Doing_Tasks_Prompt}
+
+${Executing_actions_with_care_Prompt}
+
+${Using_your_tools_Prompt}
+
+${Tone_and_style_Prompt}
+
+${auto_memory_Prompt_Pro}
+
+${genEnv(context)}
+
+${genGitStatus(context)}
+
+When working with tool results, write down any important information you might need later in your response, as the original tool result may be cleared later.
+`
+}
+
+
+export function genEnv(context: Record<string, any>): string {
+  if (context && 'env' in context) {
+    return `Here is useful information about the environment you are running in:
+<env>${context.env}</env>`;
+  }
+  return '';
+}
+
+export function genGitStatus(context: Record<string, any>): string {
+  if (context && 'gitStatus' in context) {
+    return `gitStatus: ${context.gitStatus}`;
+  }
+  return '';
+}
 
 export function generatePlanReminders(taskDescription?: string): Anthropic.ContentBlockParam[] {
   const additionalReminders: Anthropic.ContentBlockParam[] = []
@@ -78,79 +136,6 @@ ${PlanMode_Reminder_Prompt}
   })
 
   return additionalReminders
-}
-
-function getProductSyspromptPrefix(): string {
-  try {
-    // 尝试从配置管理器中获取自定义的 systemPrompt
-    const configManager = getConfManager();
-    const coreConfig = configManager.getCoreConfig();
-
-    if (coreConfig?.systemPrompt) {
-      return coreConfig.systemPrompt;
-    }
-  } catch (error) {
-  }
-
-  // 如果没有配置自定义 systemPrompt，使用默认值
-  return `You are ${PRODUCT_NAME}, ${GROUP}'s Agent AI for coding.`;
-}
-
-function getSystemPrompt(context: Record<string, any> = {}, options?: { hasTodoWriteTool?: boolean, hasAskUserQuestionTool?: boolean }): string {
-
-  // 是否包含 Task Management 部分（默认包含，除非明确指定没有 TodoWrite 工具）
-  const hasTodoWriteTool = options?.hasTodoWriteTool !== false
-
-  let TodoWriteSystemPrompt = ''
-  let TodoWrite_Tool_Usage_IMPORTANT = ''
-  if (hasTodoWriteTool) {
-    TodoWriteSystemPrompt = With_TodoWrite_Prompt
-    TodoWrite_Tool_Usage_IMPORTANT = `IMPORTANT: Always use the TodoWrite tool to plan and track tasks throughout the conversation.`
-  }
-  else {
-    TodoWriteSystemPrompt = Without_TodoWrite_Prompt
-  }
-
-  // 是否包含 AskUserQuestion 部分（默认包含，除非明确指定没有 AskUserQuestion 工具）
-  const hasAskUserQuestionTool = options?.hasAskUserQuestionTool !== false
-  const AskQuestionSystemPrompt = hasAskUserQuestionTool ? Ask_Question_Prompt : ''
-
-  return `
-${Agent_Summary_Prompt}
-
-${Style_and_Professional_Prompt}
-
-${TodoWriteSystemPrompt}
-
-${AskQuestionSystemPrompt}
-
-${Doing_Tasks_Prompt}
-
-${Tool_Usage_Policy_Prompt}
-${TodoWrite_Tool_Usage_IMPORTANT}
-
-${Code_References_Prompt}
-
-${genEnv(context)}
-
-${genGitStatus(context)}
-`
-}
-
-
-export function genEnv(context: Record<string, any>): string {
-  if (context && 'env' in context) {
-    return `Here is useful information about the environment you are running in:
-<env>${context.env}</env>`;
-  }
-  return '';
-}
-
-export function genGitStatus(context: Record<string, any>): string {
-  if (context && 'gitStatus' in context) {
-    return `gitStatus: ${context.gitStatus}`;
-  }
-  return '';
 }
 
 /**

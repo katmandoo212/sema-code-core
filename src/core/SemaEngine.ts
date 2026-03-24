@@ -156,10 +156,8 @@ export class SemaEngine {
       }
 
       // 1、构建系统提示（根据是否有代理配置决定）
-      const hasTodoWriteTool = agentContext.tools.some(tool => tool.name === 'TodoWrite');
-      const hasAskUserQuestionTool = agentContext.tools.some(tool => tool.name === 'AskUserQuestion');
       const hasSkillTool = agentContext.tools.some(tool => tool.name === 'Skill');
-      const systemPromptContent = await formatSystemPrompt({ hasTodoWriteTool, hasAskUserQuestionTool });
+      const systemPromptContent = await formatSystemPrompt();
 
       // 2、构建用户消息内容
       // 2.1 获取消息历史

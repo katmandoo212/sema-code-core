@@ -5,6 +5,7 @@ import { getOriginalCwd } from '../../util/cwd'
 import { getGlobalAgentMdPath } from '../../util/savePath'
 import { getConfManager } from '../../manager/ConfManager'
 import { getSkillTypesDescription } from '../skills/skillsManager'
+import { getMemoryDescription } from '../memory/memManager'
 
 /**
  * 读取全局 ~/.claude/CLAUDE.md
@@ -122,13 +123,14 @@ export function generateRulesReminders(): Anthropic.ContentBlockParam[] {
   // console.log('globalSection:', globalSection)
   const projectSection = buildProjectConfigSection()
   const customRulesSection = buildCustomRulesSection()
+  const memorySection = getMemoryDescription()
 
-  // 如果全局、项目配置和系统规则配置均为空，直接返回空数组
-  if (!globalSection && !projectSection && !customRulesSection) {
+  // 如果全局、项目配置、系统规则配置和 memory 均为空，直接返回空数组
+  if (!globalSection && !projectSection && !customRulesSection && !memorySection) {
     return []
   }
 
-  const sections = [customRulesSection, globalSection, projectSection, buildCurrentDateSection()]
+  const sections = [customRulesSection, globalSection, projectSection, memorySection, buildCurrentDateSection()]
     .filter(Boolean)
     .join('\n\n')
 
