@@ -137,9 +137,9 @@ export function writeTextContent(
   encoding: BufferEncoding,
   endings: LineEndingType,
 ): void {
-  // Normalize all line endings to LF first to avoid duplicating \r
-  // This handles mixed line endings (CRLF, LF, CR) and prevents \r accumulation
-  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  // Strip all \r first, then handle \n — this correctly handles \r\r\n (accumulated CRLF)
+  // where the two-step approach (/\r\n/→\n then /\r/→\n) would produce double \n
+  const normalized = content.replace(/\r/g, '')
 
   // Then convert to target format if needed
   const toWrite = endings === 'CRLF' ? normalized.replace(/\n/g, '\r\n') : normalized
