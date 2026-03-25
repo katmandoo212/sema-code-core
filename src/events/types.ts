@@ -100,6 +100,32 @@ export interface StateUpdateData {
   state: SessionState;    // 当前状态
 }
 
+// ==================== 用户输入事件 ====================
+
+/**
+ * 用户输入已接收事件数据
+ * 事件: `input:received`
+ * 说明: processUserInput 收到用户输入时触发，无论是立即处理还是入队等待
+ */
+export interface InputReceivedData {
+  inputId: string;            // 输入唯一标识，用于区分相同内容的不同输入
+  input: string;              // 处理后的输入内容
+  originalInput?: string;     // 原始输入内容
+  queued: boolean;            // 是否入队等待（true 表示当前正在处理中，输入已入队）
+  queueLength: number;        // 当前队列长度（入队后的长度）
+}
+
+/**
+ * 用户输入开始处理事件数据
+ * 事件: `input:processing`
+ * 说明: processQuery 真正开始处理用户输入时触发
+ */
+export interface InputProcessingData {
+  inputId: string;            // 输入唯一标识，与 input:received 中的 inputId 对应
+  input: string;              // 正在处理的输入内容
+  originalInput?: string;     // 原始输入内容
+}
+
 // ==================== AI消息事件 ====================
 
 /**

@@ -5,7 +5,7 @@ import { ModelProfile } from '../../../types/model'
 import { Tool } from '../../../tools/base/Tool'
 import { buildTools } from '../../../tools/base/tools'
 import { logLLMRequest } from '../../../util/logLLM'
-import { logDebug } from '../../../util/log'
+import { logDebug, logError } from '../../../util/log'
 import { MAIN_QUERY_TEMPERATURE, emitChunkEvent, getChunkEventBus, withStreamTimeout } from './util'
 
 export { MAIN_QUERY_TEMPERATURE }
@@ -59,9 +59,24 @@ async function streamChat(
     stream: true,
   });
 
+  // 监听中断信号，主动终止 stream
+  let isAborted = false;
+  const abortListener = () => {
+    isAborted = true;
+    try {
+      // 主动中止 stream 的底层控制器
+      stream.controller?.abort();
+    } catch (e) {
+      // 忽略中止时的错误
+    }
+  };
+  signal?.addEventListener('abort', abortListener, { once: true });
+
   try {
     for await (const event of stream) {
-      if (signal?.aborted) {
+      // 提前检查中断状态，避免处理无用数据
+      if (signal?.aborted || isAborted) {
+        logDebug('[Anthropic] Stream interrupted, stopping event processing');
         break; // 返回已累积的部分内容，而非抛出异常
       }
 
@@ -111,11 +126,15 @@ async function streamChat(
       }
     }
   } catch (error) {
-    if (signal?.aborted) {
+    if (signal?.aborted || isAborted) {
+      logDebug('[Anthropic] Stream error during abort, ignoring');
       // 中断时不抛出，返回已累积的部分内容
     } else {
       throw error;
     }
+  } finally {
+    // 清理监听器
+    signal?.removeEventListener('abort', abortListener);
   }
 
   // --- 构建结果 ---
@@ -140,17 +159,25 @@ async function streamChat(
 
   // 添加 tool_use blocks（解析 JSON input）
   // 中断时跳过：流式中断导致参数不完整，无法与合法无参工具调用区分
-  if (!signal?.aborted) {
+  if (!signal?.aborted && !isAborted) {
     for (const block of contentBlocks) {
       if (block && block.type === 'tool_use') {
         const toolBlock = block as any;
+        let parsedInput: any = {}
+        if (typeof toolBlock.input === 'string') {
+          try {
+            parsedInput = JSON.parse(toolBlock.input || '{}')
+          } catch (e) {
+            logError(`[Anthropic] 工具调用 JSON 解析失败: ${toolBlock.name}, input: ${toolBlock.input}`)
+          }
+        } else {
+          parsedInput = toolBlock.input
+        }
         finalContentBlocks.push({
           type: 'tool_use',
           id: toolBlock.id,
           name: toolBlock.name,
-          input: typeof toolBlock.input === 'string'
-            ? JSON.parse(toolBlock.input || '{}')
-            : toolBlock.input,
+          input: parsedInput,
         } as Anthropic.ContentBlock);
       }
     }

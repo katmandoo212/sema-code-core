@@ -319,7 +319,7 @@ export class StateManager {
     this.globalEditPermissionGranted = false;
     this.planModeInfoSent = false;
 
-    logInfo('所有状态数据已清空');
+    logInfo(`所有状态数据已清空`);
   }
 
   /**

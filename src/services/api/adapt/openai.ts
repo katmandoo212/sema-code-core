@@ -8,7 +8,7 @@ import { ModelProfile } from '../../../types/model'
 import { Tool } from '../../../tools/base/Tool'
 import { buildTools } from '../../../tools/base/tools'
 import { logLLMRequest } from '../../../util/logLLM'
-import { logDebug } from '../../../util/log'
+import { logDebug, logError } from '../../../util/log'
 import { useMaxCompletionTokens } from '../../../util/adapter'
 import { emitChunkEvent, getChunkEventBus, withStreamTimeout } from './util'
 
@@ -58,9 +58,24 @@ async function streamChat(
     stream_options: { include_usage: true },
   });
 
+  // 监听中断信号，主动终止 stream
+  let isAborted = false;
+  const abortListener = () => {
+    isAborted = true;
+    try {
+      // 主动中止 stream 的底层控制器
+      stream.controller?.abort();
+    } catch (e) {
+      // 忽略中止时的错误
+    }
+  };
+  signal?.addEventListener('abort', abortListener, { once: true });
+
   try {
     for await (const chunk of stream) {
-      if (signal?.aborted) {
+      // 提前检查中断状态，避免处理无用数据
+      if (signal?.aborted || isAborted) {
+        logDebug('[OpenAI] Stream interrupted, stopping event processing');
         break; // 返回已累积的部分内容，而非抛出异常
       }
 
@@ -102,33 +117,55 @@ async function streamChat(
       }
     }
   } catch (error) {
-    if (signal?.aborted) {
+    if (signal?.aborted || isAborted) {
+      logDebug('[OpenAI] Stream error during abort, ignoring');
       // 中断时不抛出，返回已累积的部分内容
     } else {
       throw error;
     }
+  } finally {
+    // 清理监听器
+    signal?.removeEventListener('abort', abortListener);
   }
 
   // --- 获取最终响应信息（中断时跳过，避免挂起）---
   let finalResponse: OpenAI.ChatCompletion | null = null;
-  if (!signal?.aborted) {
+  if (!signal?.aborted && !isAborted) {
     try {
-      finalResponse = await stream.finalChatCompletion();
-    } catch {
-      // stream 已中断，忽略
+      // 增加超时时间到 10 秒，避免永久挂起（原来是 1 秒）
+      finalResponse = await Promise.race([
+        stream.finalChatCompletion(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('finalChatCompletion timeout')), 10000)
+        )
+      ]);
+    } catch (e) {
+      logDebug('[OpenAI] finalChatCompletion timeout or error, using accumulated data');
+      // stream 已中断或超时，忽略
     }
   }
 
   // --- 构建结果，添加累积的 reasoning_content ---
   // 中断时跳过：流式中断导致参数不完整，无法与合法无参工具调用区分
-  const tool_calls: OpenAI.ChatCompletionMessageToolCall[] | undefined = (!signal?.aborted && toolCallsMap.size)
+  const tool_calls: OpenAI.ChatCompletionMessageToolCall[] | undefined = (!signal?.aborted && !isAborted && toolCallsMap.size)
     ? Array.from(toolCallsMap.entries())
       .sort(([a], [b]) => a - b)
-      .map(([_index, tc]) => ({
-        id: tc.id,
-        type: "function" as const,
-        function: { name: tc.name, arguments: tc.arguments },
-      }))
+      .map(([_index, tc]): OpenAI.ChatCompletionMessageToolCall | null => {
+        try {
+          // 验证工具调用的完整性
+          if (!tc.id || !tc.name) {
+            return null;
+          }
+          return {
+            id: tc.id,
+            type: "function" as const,
+            function: { name: tc.name, arguments: tc.arguments },
+          };
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter((tc): tc is OpenAI.ChatCompletionMessageToolCall => tc !== null)
     : undefined;
 
   // 构建符合 OpenAI.ChatCompletion 格式的返回值
@@ -519,7 +556,7 @@ function convertToAssistantMessage(
       if (toolCall.type === 'function') {
         contentBlocks.push({
           type: 'tool_use',
-          input: safeParseJSON(toolCall.function.arguments),
+          input: safeParseJSON(toolCall.function.arguments, toolCall.function.name),
           name: toolCall.function.name,
           id: toolCall.id || nanoid(),
         } as ContentBlock)
@@ -555,11 +592,12 @@ function convertToAssistantMessage(
   }
 }
 
-function safeParseJSON(jsonString?: string): any {
+function safeParseJSON(jsonString?: string, toolName?: string): any {
   if (!jsonString) return {}
   try {
     return JSON.parse(jsonString)
   } catch {
+    logError(`[OpenAI] 工具调用 JSON 解析失败: ${toolName || 'unknown'}, arguments: ${jsonString}`)
     return {}
   }
 }

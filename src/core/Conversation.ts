@@ -61,14 +61,31 @@ export async function* query(
   }
 
   // 获取助手响应
-  const assistantMessage = await queryLLM(
-    normalizeMessagesForAPI(messages),
-    systemPromptContent,
-    abortController.signal,
-    tools,
-    agentContext.model,
-    isSubagent // 根据上下文决定是否发送 chunk 事件
-  )
+  // 获取助手响应
+  let assistantMessage: AssistantMessage
+  try {
+    assistantMessage = await queryLLM(
+      normalizeMessagesForAPI(messages),
+      systemPromptContent,
+      abortController.signal,
+      tools,
+      agentContext.model,
+      isSubagent // 根据上下文决定是否发送 chunk 事件
+    )
+  } catch (error) {
+    // queryLLM 抛出时（如 "Request interrupted by user"、JSON 解析错误等）
+    // 至少保存用户消息，避免本轮对话历史全部丢失
+    if (abortController.signal.aborted) {
+      // 用户中断：追加中断提示后保存，与检查点1逻辑对齐
+      const interruptMessage = createUserMessage([{ type: 'text', text: INTERRUPT_MESSAGE }])
+      agentState.finalizeMessages([...messages, interruptMessage])
+      getEventBus().emit('session:interrupted', { agentId, content: INTERRUPT_MESSAGE })
+    } else {
+      // API 错误：仅保存用户消息，不追加中断提示
+      agentState.setMessageHistory(messages)
+    }
+    throw error
+  }
 
   // 检查点1: AI响应完成后工具执行前
   if (abortController.signal.aborted) {
@@ -85,6 +102,35 @@ export async function* query(
   }
 
   yield assistantMessage // 生成助手消息
+
+  // 检测输出是否被截断（stop_reason === 'max_tokens'）
+  const isTruncated = assistantMessage.message.stop_reason === 'max_tokens'
+  if (isTruncated) {
+    const hasToolCallsInContent = assistantMessage.message.content.some(b => b.type === 'tool_use')
+    if (hasToolCallsInContent) {
+      logWarn('[Truncation] 模型输出被截断 (max_tokens)，存在工具调用导致参数不完整，停止会话循环')
+      getEventBus().emit('session:error', {
+        type: 'api_error',
+        error: {
+          code: 'API_RESPONSE_ERROR',
+          message: 'API输出超长导致工具参数截断，可尝试调整模型最大输出token',
+          details: {}
+        }
+      })
+      agentState.finalizeMessages([...messages, assistantMessage])
+      return
+    } else {
+      logWarn('[Truncation] 模型输出被截断 (max_tokens)，纯文本输出，作为正常响应处理')
+      getEventBus().emit('session:error', {
+        type: 'api_error',
+        error: {
+          code: 'API_RESPONSE_ERROR',
+          message: 'API输出超长导致内容截断，可尝试调整模型最大输出token',
+          details: {}
+        }
+      })
+    }
+  }
 
   // 过滤出工具使用消息
   const toolUseMessages = assistantMessage.message.content.filter(
