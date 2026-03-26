@@ -115,13 +115,13 @@ async function processDirectoryReference(
     text: `<system-reminder>\nCalled the Bash tool with the following input: ${bashToolCallInfo}\n</system-reminder>`
   })
 
-  // 调用 Bash 工具列出目录内容
+  // 调用 Bash 工具列出目录内容（覆盖 agentId 避免触发 chunk 事件）
   const bashGenerator = bashTool.call(
     {
       command: `ls "${fullPath}"`,
       description: `Lists files in ${fullPath}`
     },
-    agentContext
+    { ...agentContext, agentId: 'fileReference' }
   )
 
   for await (const result of bashGenerator) {
