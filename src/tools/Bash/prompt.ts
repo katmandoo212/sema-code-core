@@ -3,7 +3,7 @@ import { PRODUCT_NAME, PRODUCT_URL } from '../../constants/product'
 import { TOOL_NAME_FOR_PROMPT as READ_TOOL_NAME } from '../Read/prompt'
 import { TOOL_NAME_FOR_PROMPT as EDIT_TOOL_NAME } from '../Edit/prompt'
 import { TOOL_NAME_FOR_PROMPT as WRITE_TOOL_NAME } from '../Write/prompt'
-import { TOOL_NAME_FOR_PROMPT as TASK_TOOL_NAME } from '../Task/prompt'
+import { TOOL_NAME_FOR_PROMPT as AGENT_TOOL_NAME } from '../Agent/prompt'
 import { TOOL_NAME_FOR_PROMPT as GLOB_TOOL_NAME } from '../Glob/prompt'
 import { TOOL_NAME_FOR_PROMPT as GREP_TOOL_NAME } from '../Grep/prompt'
 import { TOOL_NAME_FOR_PROMPT as TODOS_TOOL_NAME } from '../TodoWrite/prompt'
@@ -96,7 +96,7 @@ Git Safety Protocol:
 
 Important notes:
 - NEVER run additional commands to read or explore code, besides git bash commands
-- NEVER use the ${TODOS_TOOL_NAME} or ${TASK_TOOL_NAME} tools
+- NEVER use the ${TODOS_TOOL_NAME} or ${AGENT_TOOL_NAME} tools
 - DO NOT push to the remote repository unless the user explicitly asks you to do so
 - IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
 - If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
@@ -140,7 +140,7 @@ EOF
 </example>
 
 Important:
-- DO NOT use the ${TODOS_TOOL_NAME} or ${TASK_TOOL_NAME} tools
+- DO NOT use the ${TODOS_TOOL_NAME} or ${AGENT_TOOL_NAME} tools
 - Return the PR URL when you're done, so the user can see it
 
 # Other common operations
