@@ -718,7 +718,12 @@ class PluginsManager {
 
             for (const entry of installEntries) {
               const components = await this.readPluginComponents(entry.installPath)
-              const status = enabledPluginsMap[entry.scope]?.[pluginKey] !== false
+              const status = (() => {
+                if (pluginKey in (enabledPluginsMap.local ?? {})) return enabledPluginsMap.local[pluginKey]
+                if (pluginKey in (enabledPluginsMap.project ?? {})) return enabledPluginsMap.project[pluginKey]
+                if (pluginKey in (enabledPluginsMap.user ?? {})) return enabledPluginsMap.user[pluginKey]
+                return true
+              })()
 
               pluginsResult.push({
                 name: pluginDef.name,
