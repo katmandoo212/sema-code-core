@@ -203,9 +203,11 @@ export type ToolExecutionChunkData = ToolExecutionCompleteData
  */
 export interface ToolExecutionErrorData {
   agentId: string;       // 代理ID（主代理为 MAIN_AGENT_ID，子代理为 taskId）
+  toolId?: string;       // 工具调用唯一ID（对应 Anthropic ToolUseBlock 的 id）
   toolName: string;      // 工具名称
   title: string;         // 工具标题
   content: string;       // 工具错误内容
+  input?: Record<string, any>;  // 工具调用参数
 }
 
 /**

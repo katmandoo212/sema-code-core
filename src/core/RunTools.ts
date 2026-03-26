@@ -75,9 +75,11 @@ export async function* runToolUse(
     // 发送工具出错事件 但不会阻塞agent继续执行
     const toolErrorData: ToolExecutionErrorData = {
       agentId: agentContext.agentId,
+      toolId: toolUse.id,
       toolName: toolName,
       title: toolName,
       content: `Error: No such tool available: ${toolName}`,
+      input: toolUse.input as Record<string, any>,
     }
     getEventBus().emit('tool:execution:error', toolErrorData)
 
@@ -177,9 +179,11 @@ export async function* checkPermissionsAndCallTool(
     // 发送工具出错事件 但不会阻塞agent继续执行
     const toolErrorData: ToolExecutionErrorData = {
       agentId: agentContext.agentId,
+      toolId: toolUseID,
       toolName: tool.name,
       title: tool.getDisplayTitle?.(input as never) || tool.name,
       content: errorMessage,
+      input,
     }
     getEventBus().emit('tool:execution:error', toolErrorData)
 
@@ -206,9 +210,11 @@ export async function* checkPermissionsAndCallTool(
     const errorMessage = isValidCall!.message || '工具调用验证失败'
     const toolErrorData: ToolExecutionErrorData = {
       agentId: agentContext.agentId,
+      toolId: toolUseID,
       toolName: tool.name,
       title: tool.getDisplayTitle?.(input as never) || tool.name,
       content: errorMessage,
+      input,
     }
     getEventBus().emit('tool:execution:error', toolErrorData)
 
@@ -310,9 +316,11 @@ export async function* checkPermissionsAndCallTool(
     // 发送工具出错事件 但不会阻塞agent继续执行
     const toolErrorData: ToolExecutionErrorData = {
       agentId: agentContext.agentId,
+      toolId: toolUseID,
       toolName: tool.name,
       title: tool.getDisplayTitle?.(input as never) || tool.name,
       content: content,
+      input,
     }
     getEventBus().emit('tool:execution:error', toolErrorData)
 
