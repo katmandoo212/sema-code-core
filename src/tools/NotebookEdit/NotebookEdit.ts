@@ -1,5 +1,5 @@
 import { type Hunk } from 'diff'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { extname, isAbsolute, relative, resolve } from 'path'
 import { z } from 'zod'
 import { Tool, ValidationResult } from '../base/Tool'
@@ -14,6 +14,7 @@ import { safeParseJSON } from '../../util/format'
 import { getCwd } from '../../util/cwd'
 import { getPatch } from '../../util/diff'
 import { TOOL_NAME_FOR_PROMPT, DESCRIPTION } from './prompt'
+import { getStateManager } from '../../manager/StateManager'
 
 
 // 辅助函数：标准化 cell source（可能是 string 或 string[]）
@@ -149,7 +150,7 @@ export const NotebookEditTool = {
   getDisplayTitle(input) {
     return getTitle(input)
   },
-  async validateInput(input) {
+  async validateInput(input, agentContext: any) {
     const {
       notebook_path,
       cell_number,
@@ -163,6 +164,24 @@ export const NotebookEditTool = {
       return {
         result: false,
         message: 'Notebook file does not exist.',
+      }
+    }
+
+    // 时间戳校验：确保文件已被读取且未被意外修改
+    const stateManager = getStateManager()
+    const agentState = stateManager.forAgent(agentContext.agentId)
+    const readTimestamp = agentState.getReadFileTimestamp(fullPath)
+    if (!readTimestamp) {
+      return {
+        result: false,
+        message: 'File has not been read yet. Read it first before writing to it.',
+      }
+    }
+    const lastWriteTime = statSync(fullPath).mtimeMs
+    if (lastWriteTime > readTimestamp) {
+      return {
+        result: false,
+        message: 'File has been unexpectedly modified. Read it again before attempting to write it.',
       }
     }
 
@@ -226,7 +245,7 @@ export const NotebookEditTool = {
 
     return { result: true }
   },
-  async *call(input) {
+  async *call(input, agentContext: any) {
     const {
       notebook_path,
       cell_number,
@@ -274,6 +293,15 @@ export const NotebookEditTool = {
           targetCell.cell_type = cell_type
         }
       }
+      // 权限确认后二次校验时间戳，防止用户在权限对话框期间修改文件
+      const stateManager = getStateManager()
+      const agentState = stateManager.forAgent(agentContext.agentId)
+      const readTimestamp = agentState.getReadFileTimestamp(fullPath)
+      const currentMtime = statSync(fullPath).mtimeMs
+      if (readTimestamp && currentMtime > readTimestamp) {
+        throw new Error('File has been modified since permission was granted. Read it again before attempting to edit it.')
+      }
+
       // Write back to file
       const endings = detectLineEndings(fullPath)
       const updatedNotebook = JSON.stringify(notebook, null, 1)

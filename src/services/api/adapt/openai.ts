@@ -42,6 +42,7 @@ async function streamChat(
   });
 
   // --- 累积 stream chunks ---
+  let messageId = '';
   let accumulatedContent = '';
   let accumulatedReasoning = '';
   const toolCallsMap = new Map<
@@ -79,6 +80,7 @@ async function streamChat(
         break; // 返回已累积的部分内容，而非抛出异常
       }
 
+      if (chunk.id) messageId = chunk.id;
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
 
@@ -90,7 +92,7 @@ async function streamChat(
         }
         accumulatedContent += delta.content;
         if (eventBus) {
-          emitChunkEvent(eventBus, 'text', accumulatedContent, delta.content);
+          emitChunkEvent(eventBus, 'text', messageId, accumulatedContent, delta.content);
         }
       }
 
@@ -98,7 +100,7 @@ async function streamChat(
       if ("reasoning_content" in delta && delta.reasoning_content) {
         accumulatedReasoning += delta.reasoning_content as string;
         if (eventBus) {
-          emitChunkEvent(eventBus, 'thinking', accumulatedReasoning, delta.reasoning_content as string);
+          emitChunkEvent(eventBus, 'thinking', messageId, accumulatedReasoning, delta.reasoning_content as string);
         }
       }
 

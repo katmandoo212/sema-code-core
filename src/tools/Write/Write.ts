@@ -164,6 +164,16 @@ export const FileWriteTool = {
       : await detectRepoLineEndings(getCwd())
 
     mkdirSync(dir, { recursive: true })
+
+    // 权限确认后二次校验时间戳，防止用户在权限对话框期间修改文件
+    if (oldFileExists) {
+      const readTimestamp = agentState.getReadFileTimestamp(fullFilePath)
+      const currentMtime = statSync(fullFilePath).mtimeMs
+      if (readTimestamp && currentMtime > readTimestamp) {
+        throw new Error('File has been modified since permission was granted. Read it again before attempting to write it.')
+      }
+    }
+
     writeTextContent(fullFilePath, content, enc, endings!)
 
     // Update read timestamp, to invalidate stale writes

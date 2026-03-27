@@ -133,6 +133,7 @@ export interface InputProcessingData {
  * 事件: `message:thinking:chunk`
  */
 export interface ThinkingChunkData {
+  id: string;      // 消息唯一ID，对应 Anthropic Message 的 id
   content: string;
   delta: string;
 }
@@ -142,6 +143,7 @@ export interface ThinkingChunkData {
  * 事件: `message:text:chunk`
  */
 export interface TextChunkData {
+  id: string;      // 消息唯一ID，对应 Anthropic Message 的 id
   content: string;
   delta: string;
 }
@@ -151,6 +153,7 @@ export interface TextChunkData {
  * 事件: `message:complete`
  */
 export interface MessageCompleteData {
+  id: string;             // 消息唯一ID，对应 Anthropic Message 的 id
   agentId: string;        // 代理ID（主代理为 MAIN_AGENT_ID，子代理为 taskId）
   reasoning: string;      // 推理过程内容（如果有）
   content: string;        // 完整的回复内容

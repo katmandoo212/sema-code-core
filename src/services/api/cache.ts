@@ -39,6 +39,7 @@ export async function tryGetCachedResponse(
 
   if (shouldStream) {
     await simulateCachedStreamResponse(
+      cachedResponse.message.id,
       textContent, thinkingContent, toolUseContent,
       enableThinking, emitChunkEvents, signal
     )
@@ -54,6 +55,7 @@ export async function tryGetCachedResponse(
 // ============================================================================
 
 async function simulateCachedStreamResponse(
+  messageId: string,
   textContent: string,
   thinkingContent: string,
   toolUseContent: string,
@@ -65,7 +67,7 @@ async function simulateCachedStreamResponse(
 
   // 先模拟 thinking 流（仅在启用思考时）
   if (thinkingContent && emitChunkEvents && enableThinking) {
-    await simulateContentStream('thinking', thinkingContent, eventBus, signal)
+    await simulateContentStream('thinking', messageId, thinkingContent, eventBus, signal)
   }
 
   // 检查中断
@@ -73,7 +75,7 @@ async function simulateCachedStreamResponse(
 
   // 再模拟 text 流
   if (textContent && emitChunkEvents) {
-    await simulateContentStream('text', textContent, eventBus, signal)
+    await simulateContentStream('text', messageId, textContent, eventBus, signal)
   }
 
   // 检查中断
@@ -109,6 +111,7 @@ async function simulateCachedNonStreamDelay(
 
 async function simulateContentStream(
   type: 'text' | 'thinking',
+  messageId: string,
   content: string,
   eventBus: any,
   signal?: AbortSignal,
@@ -123,7 +126,7 @@ async function simulateContentStream(
     const chunk = content.slice(i, i + CACHE_STREAM_CHUNK_SIZE)
     accumulatedContent += chunk
 
-    const chunkData: ThinkingChunkData | TextChunkData = { content: accumulatedContent, delta: chunk }
+    const chunkData: ThinkingChunkData | TextChunkData = { id: messageId, content: accumulatedContent, delta: chunk }
     eventBus.emit(eventName, chunkData)
 
     if (i + CACHE_STREAM_CHUNK_SIZE < content.length) {

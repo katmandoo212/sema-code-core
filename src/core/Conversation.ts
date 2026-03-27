@@ -150,6 +150,7 @@ export async function* query(
     .join('\n')
 
   const messageCompleteData: MessageCompleteData = {
+    id: assistantMessage.message.id,
     agentId,
     reasoning: reasoning,
     content: textContent,

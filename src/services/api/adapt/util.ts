@@ -47,10 +47,11 @@ export function withStreamTimeout(signal?: AbortSignal): {
 export function emitChunkEvent(
   eventBus: any,
   type: 'text' | 'thinking',
+  id: string,
   content: string,
   delta: string
 ) {
-  const chunkData: ThinkingChunkData | TextChunkData = { content, delta }
+  const chunkData: ThinkingChunkData | TextChunkData = { id, content, delta }
   const eventName = type === 'thinking' ? 'message:thinking:chunk' : 'message:text:chunk'
   eventBus.emit(eventName, chunkData)
 }

@@ -210,6 +210,16 @@ export const FileEditTool = {
     const originalFile = existsSync(fullFilePath)
       ? readFileSync(fullFilePath, enc)
       : ''
+
+    // 权限确认后二次校验时间戳，防止用户在权限对话框期间修改文件
+    if (existsSync(fullFilePath)) {
+      const readTimestamp = agentState.getReadFileTimestamps()[fullFilePath]
+      const currentMtime = statSync(fullFilePath).mtimeMs
+      if (readTimestamp && currentMtime > readTimestamp) {
+        throw new Error('File has been modified since permission was granted. Read it again before attempting to edit it.')
+      }
+    }
+
     writeTextContent(fullFilePath, updatedFile, enc, endings)
 
     // Update read timestamp, to invalidate stale writes
