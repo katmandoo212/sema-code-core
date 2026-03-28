@@ -78,6 +78,18 @@ function smartDecode(buffer: Buffer): string {
   return utf8Text
 }
 
+// Cygwin 运行时在进程被强制终止时输出的内部噪音行
+// 例：`0 [main] bash (1234) child_copy: ...` 或 `*** fatal error in forked process`
+const CYGWIN_NOISE_RE = /^(?:\d+\s+\[main\]\s+\S+.*|.*\*{3}\s+fatal error in forked process.*)/
+
+function filterCygwinNoise(text: string): string {
+  if (!IS_WIN) return text
+  return text
+    .split('\n')
+    .filter(line => !CYGWIN_NOISE_RE.test(line))
+    .join('\n')
+}
+
 // 队列中的命令类型定义
 type QueuedCommand = {
   command: string
@@ -486,7 +498,7 @@ export class PersistentShell {
       // 在删除文件前缓存内容，防止与 exec_() 的 readOutput() 产生竞态条件
       try {
         this._exitCachedStdout = fs.existsSync(this.stdoutFile) ? smartDecode(fs.readFileSync(this.stdoutFile)) : ''
-        this._exitCachedStderr = fs.existsSync(this.stderrFile) ? smartDecode(fs.readFileSync(this.stderrFile)) : ''
+        this._exitCachedStderr = fs.existsSync(this.stderrFile) ? filterCygwinNoise(smartDecode(fs.readFileSync(this.stderrFile))) : ''
       } catch {
         this._exitCachedStdout = ''
         this._exitCachedStderr = ''
@@ -572,6 +584,8 @@ export class PersistentShell {
     try {
       if (IS_WIN) {
         // Windows: 使用 taskkill 终止进程树
+        // 立即标记为不可用，防止 exit 事件异步触发前 getInstance() 返回死实例导致 EPIPE
+        this.isAlive = false
         try {
           execSync(`taskkill /f /t /pid ${parentPid}`, { stdio: 'ignore', timeout: 5000 })
         } catch (error) {
@@ -794,7 +808,7 @@ export class PersistentShell {
           ? smartDecode(fs.readFileSync(this.stdoutFile))
           : this._exitCachedStdout,
         stderr: fs.existsSync(this.stderrFile)
-          ? smartDecode(fs.readFileSync(this.stderrFile))
+          ? filterCygwinNoise(smartDecode(fs.readFileSync(this.stderrFile)))
           : this._exitCachedStderr,
       })
 
