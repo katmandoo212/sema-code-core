@@ -57,6 +57,9 @@ export async function* query(
           : typeof m.message.content
       })), null, 2)}`)
       messages = processedMessages
+      // 压缩后清空 todos 和 readFileTimestamps（历史上下文已丢失，它们不再有意义）
+      agentState.updateTodosIntelligently([]);
+      agentState.setReadFileTimestamps({});
     }
   }
 

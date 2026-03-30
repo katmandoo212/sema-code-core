@@ -38,8 +38,11 @@ export interface AgentStateAccessor {
 
   // 消息历史管理
   getMessageHistory(): Message[];
-  setMessageHistory(messages: Message[]): void;
+  setMessageHistory(messages: Message[], skipAutoSave?: boolean): void;
   finalizeMessages(messages: Message[]): void;
+
+  // 文件读取时间戳批量设置
+  setReadFileTimestamps(timestamps: Record<string, number>): void;
 
   // 文件读取时间戳管理
   getReadFileTimestamps(): Record<string, number>;
@@ -122,10 +125,10 @@ export class StateManager {
   /**
    * 设置消息历史
    */
-  setMessageHistory(messages: Message[], agentId: string = MAIN_AGENT_ID): void {
+  setMessageHistory(messages: Message[], agentId: string = MAIN_AGENT_ID, skipAutoSave = false): void {
     this.messageHistoryMap.set(agentId, messages);
     // 主代理设置消息历史时自动保存
-    if (agentId === MAIN_AGENT_ID && this.sessionId && messages.length > 0) {
+    if (!skipAutoSave && agentId === MAIN_AGENT_ID && this.sessionId && messages.length > 0) {
       this.saveSessionHistory();
     }
   }
@@ -159,6 +162,13 @@ export class StateManager {
   setReadFileTimestamp(filePath: string, timestamp: number, agentId: string = MAIN_AGENT_ID): void {
     const timestamps = this.getReadFileTimestamps(agentId);
     timestamps[filePath] = timestamp;
+  }
+
+  /**
+   * 批量设置文件读取时间戳（覆盖）
+   */
+  setReadFileTimestamps(timestamps: Record<string, number>, agentId: string = MAIN_AGENT_ID): void {
+    this.readFileTimestampsMap.set(agentId, { ...timestamps });
   }
 
   /**
@@ -342,9 +352,10 @@ export class StateManager {
     try {
       const messageHistory = this.getMessageHistory();
       const todos = this.getTodos();
+      const readFileTimestamps = this.getReadFileTimestamps(MAIN_AGENT_ID);
       const workingDir = getConfManager().getCoreConfig()?.workingDir;
       if (this.sessionId && messageHistory.length > 0) {
-        await saveHistory(this.sessionId, messageHistory, todos, workingDir);
+        await saveHistory(this.sessionId, messageHistory, todos, workingDir, readFileTimestamps);
         // logInfo(`saveHistory: ${JSON.stringify(messageHistory, null, 2)}`)
 
         logInfo(`会话历史已保存: ${this.sessionId}`);
@@ -412,7 +423,7 @@ export class StateManager {
 
       // 消息历史管理
       getMessageHistory: () => this.getMessageHistory(agentId),
-      setMessageHistory: (messages: Message[]) => this.setMessageHistory(messages, agentId),
+      setMessageHistory: (messages: Message[], skipAutoSave?: boolean) => this.setMessageHistory(messages, agentId, skipAutoSave),
       finalizeMessages: (messages: Message[]) => {
         this.setMessageHistory(messages, agentId);
         this.updateState('idle', agentId);
@@ -422,6 +433,7 @@ export class StateManager {
       getReadFileTimestamps: () => this.getReadFileTimestamps(agentId),
       getReadFileTimestamp: (filePath: string) => this.getReadFileTimestamp(filePath, agentId),
       setReadFileTimestamp: (filePath: string, timestamp: number) => this.setReadFileTimestamp(filePath, timestamp, agentId),
+      setReadFileTimestamps: (timestamps: Record<string, number>) => this.setReadFileTimestamps(timestamps, agentId),
 
       // 状态管理
       getCurrentState: () => this.getCurrentState(agentId),

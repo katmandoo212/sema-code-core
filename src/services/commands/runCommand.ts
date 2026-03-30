@@ -65,6 +65,11 @@ async function handleClearCommand(_argsStr?: string): Promise<void> {
 
   const eventBus = EventBus.getInstance();
   const stateManager = getStateManager();
+  const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
+
+  // 先清空 todos 和 readFileTimestamps，确保保存到文件时也是空的
+  mainAgentState.updateTodosIntelligently([]);
+  mainAgentState.setReadFileTimestamps({});
 
   stateManager.setMessageHistory([
     createUserMessage([LOCAL_COMMAND_CAVEAT, makeCommandBlock('clear'), makeStdoutBlock()]),
@@ -114,6 +119,10 @@ async function handleCompactCommand(): Promise<void> {
               .map((b: any) => b.text)
               .join('\n')
           : '';
+
+    // 压缩后清空 todos 和 readFileTimestamps（历史上下文已丢失，它们不再有意义）
+    mainAgentState.updateTodosIntelligently([]);
+    mainAgentState.setReadFileTimestamps({});
 
     mainAgentState.setMessageHistory([
       createUserMessage([

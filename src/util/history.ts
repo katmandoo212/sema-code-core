@@ -19,6 +19,7 @@ let lastHistoryCleanupTime: number = 0;
 interface HistoryData {
   messages: Message[];
   todos: TodoItem[];
+  readFileTimestamps?: Record<string, number>;
 }
 
 /**
@@ -75,8 +76,9 @@ export async function loadHistory(sessionId?: string, projectPath?: string): Pro
       const historyData: HistoryData = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
       const messages = historyData.messages || [];
       const todos = historyData.todos || [];
-      logInfo(`加载历史消息 ${messages.length} 条，todos ${todos.length} 项`);
-      return { messages, todos };
+      const readFileTimestamps = historyData.readFileTimestamps || {};
+      logInfo(`加载历史消息 ${messages.length} 条，todos ${todos.length} 项，readFileTimestamps ${Object.keys(readFileTimestamps).length} 项`);
+      return { messages, todos, readFileTimestamps };
     } else {
       logInfo(`未找到历史文件: ${historyPath}，开始新会话`);
       return { messages: [], todos: [] };
@@ -212,7 +214,7 @@ export async function cleanupOldHistoryFiles(projectPath?: string): Promise<void
  * @param todos Todo列表
  * @param projectPath 项目绝对路径
  */
-export async function saveHistory(sessionId: string, messages: Message[], todos?: TodoItem[], projectPath?: string): Promise<void> {
+export async function saveHistory(sessionId: string, messages: Message[], todos?: TodoItem[], projectPath?: string, readFileTimestamps?: Record<string, number>): Promise<void> {
   const historyDir = projectPath ? getProjectHistoryDir(projectPath) : getHistoryDir();
   const historyPath = getHistoryFilePath(sessionId, projectPath);
 
@@ -224,11 +226,12 @@ export async function saveHistory(sessionId: string, messages: Message[], todos?
 
     const historyData: HistoryData = {
       messages: stripRedundantUsage(messages),
-      todos: todos || []
+      todos: todos || [],
+      ...(readFileTimestamps && Object.keys(readFileTimestamps).length > 0 && { readFileTimestamps })
     };
 
     fs.writeFileSync(historyPath, JSON.stringify(historyData, null, 2));
-    logInfo(`保存历史消息 ${messages.length} 条，todos ${(todos || []).length} 项到 ${historyPath}`);
+    logInfo(`保存历史消息 ${messages.length} 条，todos ${(todos || []).length} 项，readFileTimestamps ${Object.keys(readFileTimestamps || {}).length} 项到 ${historyPath}`);
 
     // 定时清理历史文件（每小时最多执行一次）
     const nowTimestamp = getCurrentTimestamp();

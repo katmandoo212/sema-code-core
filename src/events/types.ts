@@ -45,6 +45,8 @@ export interface SessionReadyData {
   historyLoaded: boolean;       // 是否加载了历史记录
   usage: Usage;                 // token使用情况
   projectInputHistory: string[]; // 项目历史输入记录
+  todos: TodoItem[];            // 待办事项列表
+  readFileTimestamps: Record<string, number>;  // 文件读取时间戳
 }
 
 /**

@@ -98,9 +98,13 @@ export class SemaEngine {
     const historyData = await loadHistory(sessionId, workingDir);
     logInfo(`会话CoreConfig: ${JSON.stringify(coreConfig, null, 2)}`)
 
-    // 将加载的消息历史和 todos 设置到主代理状态
-    mainAgentState.setMessageHistory(historyData.messages);
+    // 将加载的消息历史、todos 和 readFileTimestamps 设置到主代理状态
+    // 初始化时跳过自动保存，避免把刚读取的数据重复写回文件
+    mainAgentState.setMessageHistory(historyData.messages, true);
     mainAgentState.setTodos(historyData.todos);
+    if (historyData.readFileTimestamps) {
+      mainAgentState.setReadFileTimestamps(historyData.readFileTimestamps);
+    }
 
     // 使用全局配置获取工作路径
     const projectConfig = getConfManager().getProjectConfig();
@@ -114,7 +118,9 @@ export class SemaEngine {
       sessionId: stateManager.getSessionId(),
       historyLoaded: !!sessionId,
       projectInputHistory: projectInputHistory,
-      usage: usage
+      usage: usage,
+      todos: historyData.todos,
+      readFileTimestamps: historyData.readFileTimestamps || {}
     };
 
     logInfo(`新会话创建完成，sessionId: ${stateManager.getSessionId()}`);
