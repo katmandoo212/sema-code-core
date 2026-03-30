@@ -170,7 +170,11 @@ export const FileEditTool = {
 
     const enc = detectFileEncoding(fullFilePath)
     const file = readFileSync(fullFilePath, enc)
-    if (!file.includes(old_string)) {
+    const lineEndings = detectLineEndings(fullFilePath)
+    const normalizedOldString = lineEndings === 'CRLF'
+      ? old_string.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+      : old_string.replace(/\r\n/g, '\n')
+    if (!file.includes(normalizedOldString)) {
       return {
         result: false,
         message: `String to replace not found in file.`,
@@ -180,7 +184,7 @@ export const FileEditTool = {
       }
     }
 
-    const matches = file.split(old_string).length - 1
+    const matches = file.split(normalizedOldString).length - 1
     if (matches > 1 && !replace_all) {
       return {
         result: false,

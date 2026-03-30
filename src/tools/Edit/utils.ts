@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs'
-import { detectFileEncoding, normalizeFilePath } from '../../util/file'
+import { detectFileEncoding, detectLineEndings, normalizeFilePath } from '../../util/file'
 import { type Hunk } from 'diff'
 import { getPatch } from '../../util/diff'
 
@@ -25,21 +25,30 @@ export function applyEdit(
     // Edit existing file
     const enc = detectFileEncoding(fullFilePath)
     originalFile = readFileSync(fullFilePath, enc)
+    const lineEndings = detectLineEndings(fullFilePath)
+    const normalizedOldString = lineEndings === 'CRLF'
+      ? old_string.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+      : old_string.replace(/\r\n/g, '\n')
+    const normalizedNewString = lineEndings === 'CRLF'
+      ? new_string.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+      : new_string.replace(/\r\n/g, '\n')
     const replaceFunc = replace_all
       ? (str: string, search: string, replacement: string) => str.replaceAll(search, replacement)
       : (str: string, search: string, replacement: string) => str.replace(search, replacement)
 
     if (new_string === '') {
       if (
-        !old_string.endsWith('\n') &&
-        originalFile.includes(old_string + '\n')
+        !normalizedOldString.endsWith('\n') &&
+        !normalizedOldString.endsWith('\r\n') &&
+        (originalFile.includes(normalizedOldString + '\r\n') || originalFile.includes(normalizedOldString + '\n'))
       ) {
-        updatedFile = replaceFunc(originalFile, old_string + '\n', new_string)
+        const suffix = lineEndings === 'CRLF' ? '\r\n' : '\n'
+        updatedFile = replaceFunc(originalFile, normalizedOldString + suffix, new_string)
       } else {
-        updatedFile = replaceFunc(originalFile, old_string, new_string)
+        updatedFile = replaceFunc(originalFile, normalizedOldString, new_string)
       }
     } else {
-      updatedFile = replaceFunc(originalFile, old_string, new_string)
+      updatedFile = replaceFunc(originalFile, normalizedOldString, normalizedNewString)
     }
     if (updatedFile === originalFile) {
       throw new Error(
