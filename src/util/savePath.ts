@@ -164,20 +164,3 @@ export function getLLMCacheFilePath(): string {
 export function getEventDir(): string {
   return path.join(getSemaRootDir(), EVENT_DIR_PATH);
 }
-
-/**
- * 获取全局 Agent配置文件路径
- * 位于 ~/.claude/CLAUDE.md
- * 跨平台兼容：os.homedir() + path.join() 自动适配 Windows、macOS、Linux
- */
-export function getGlobalAgentMdPath(): string {
-  return path.join(getClaudeRootDir(), 'CLAUDE.md');
-}
-
-/**
- * 获取全局 MCP配置 文件路径
- * 位于根目录下的 /.sema/mcp.json
- */
-export function getGlobalMCPFilePath(): string {
-  return path.join(getSemaRootDir(), 'mcp.json');
-}

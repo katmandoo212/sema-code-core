@@ -147,3 +147,9 @@ export type {
 export type {
   MemoryConfig
 } from './memory';
+
+// 导出 Rule 相关类型
+export type {
+  RuleScope,
+  RuleConfig
+} from './rule';

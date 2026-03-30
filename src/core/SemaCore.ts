@@ -14,6 +14,8 @@ import { getMCPManager } from '../services/mcp/MCPManager';
 import { MCPServerConfig, MCPServerInfo } from '../types/mcp';
 import { getMemoryManager } from '../services/memory/memManager';
 import { MemoryConfig } from '../types/memory';
+import { getRuleManager } from '../services/rules/rulesManager';
+import { RuleConfig } from '../types/rule';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -34,8 +36,10 @@ export class SemaCore {
     this.engine = new SemaEngine();
 
     this.configPromise = this.configPromise.then(async () => {
-      getPluginsManager(); // 触发单例初始化，后台加载市场插件信息
-      getMemoryManager(); // 触发单例初始化，后台加载 memory 信息
+      // 触发单例初始化，后台加载 市场插件信息、memory 信息、rule 信息
+      getPluginsManager(); 
+      getMemoryManager(); 
+      getRuleManager(); 
     });
     logInfo(`初始化SemaCore: ${JSON.stringify(config, null, 2)}`)
   }
@@ -84,6 +88,7 @@ export class SemaCore {
     if (key === 'enableClaudeCodeCompat') {
       getPluginsManager().refreshMarketplacePluginsInfo().catch(() => {});
       getMemoryManager().refreshMemoryInfo().catch(() => {});
+      getRuleManager().refreshRuleInfo().catch(() => {});
     }
   };
   updateCoreConfig = (config: UpdatableCoreConfig): void => {
@@ -91,6 +96,7 @@ export class SemaCore {
     if ('enableClaudeCodeCompat' in config) {
       getPluginsManager().refreshMarketplacePluginsInfo().catch(() => {});
       getMemoryManager().refreshMemoryInfo().catch(() => {});
+      getRuleManager().refreshRuleInfo().catch(() => {});
     }
   };
   updateUseTools = (toolNames: string[] | null): void => getConfManager().updateUseTools(toolNames);
@@ -146,6 +152,10 @@ export class SemaCore {
   // ==================== Memory 管理 ====================
   getMemoryInfo = (): Promise<MemoryConfig | null> => getMemoryManager().getMemoryInfo();
   refreshMemoryInfo = (): Promise<MemoryConfig | null> => getMemoryManager().refreshMemoryInfo();
+
+  // ==================== Rule 管理 ====================
+  getRuleInfo = (): Promise<RuleConfig | null> => getRuleManager().getRuleInfo();
+  refreshRuleInfo = (): Promise<RuleConfig | null> => getRuleManager().refreshRuleInfo();
 
   // ==================== 资源管理 ====================
   dispose = async () => {
