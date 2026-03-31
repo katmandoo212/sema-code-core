@@ -40,6 +40,7 @@ export interface AgentStateAccessor {
   getMessageHistory(): Message[];
   setMessageHistory(messages: Message[], skipAutoSave?: boolean): void;
   finalizeMessages(messages: Message[]): void;
+  flushHistory(): Promise<void>;
 
   // 文件读取时间戳批量设置
   setReadFileTimestamps(timestamps: Record<string, number>): void;
@@ -348,7 +349,7 @@ export class StateManager {
   /**
    * 保存会话历史到文件
    */
-  private async saveSessionHistory(): Promise<void> {
+  async saveSessionHistory(): Promise<void> {
     try {
       const messageHistory = this.getMessageHistory();
       const todos = this.getTodos();
@@ -428,6 +429,7 @@ export class StateManager {
         this.setMessageHistory(messages, agentId);
         this.updateState('idle', agentId);
       },
+      flushHistory: () => this.saveSessionHistory(),
 
       // 文件读取时间戳管理
       getReadFileTimestamps: () => this.getReadFileTimestamps(agentId),

@@ -86,6 +86,8 @@ export async function* query(
     } else {
       // API 错误：仅保存用户消息，不追加中断提示
       agentState.setMessageHistory(messages)
+      // 显式等待文件写入完成，避免 fire-and-forget 导致历史丢失
+      await agentState.flushHistory()
     }
     throw error
   }
