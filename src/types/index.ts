@@ -153,3 +153,10 @@ export type {
   RuleScope,
   RuleConfig
 } from './rule';
+
+// 导出 Task 相关类型
+export type {
+  TaskStatus,
+  TaskRecord
+} from './task';
+

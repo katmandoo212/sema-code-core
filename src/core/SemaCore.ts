@@ -16,6 +16,8 @@ import { getMemoryManager } from '../services/memory/memManager';
 import { MemoryConfig } from '../types/memory';
 import { getRuleManager } from '../services/rules/rulesManager';
 import { RuleConfig } from '../types/rule';
+import { getTaskManager } from '../manager/TaskManager';
+import { TaskRecord } from '../types/task';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
@@ -157,9 +159,17 @@ export class SemaCore {
   getRuleInfo = (): Promise<RuleConfig | null> => getRuleManager().getRuleInfo();
   refreshRuleInfo = (): Promise<RuleConfig | null> => getRuleManager().refreshRuleInfo();
 
+  // ==================== Task 管理 ====================
+  getTasks = (): TaskRecord[] => getTaskManager().getTasks();
+  watchTask = (taskId: string, onDelta: (delta: string) => void): () => void => getTaskManager().watchTask(taskId, onDelta);
+  stopTask = (taskId: string): void => getTaskManager().stopTask(taskId);
+
   // ==================== 资源管理 ====================
   dispose = async () => {
+    getTaskManager().dispose();
     getPluginsManager().dispose();
+    getMemoryManager().dispose();
+    getRuleManager().dispose();
     this.engine.dispose();
   };
 

@@ -11,18 +11,12 @@ import { IS_WIN, nativeToShellPath, splitPathEntries } from './platform'
 
 // 临时文件前缀
 const TEMPFILE_PREFIX = join(os.tmpdir(), 'sema-')
-
-function formatDuration(ms: number): string {
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  const min = Math.floor(s / 60)
-  const rem = s % 60
-  return rem > 0 ? `${min}min${rem}s` : `${min}min`
-}
 // 默认超时时间（2分钟）
 const DEFAULT_TIMEOUT = 120 * 1000
 // SIGTERM信号的标准退出码
 const SIGTERM_CODE = 143
+// 流式输出检查间隔（ms）
+const CHUNK_CHECK_INTERVAL = 2000
 // 文件后缀定义
 const FILE_SUFFIXES = {
   STATUS: '-status',    // 状态文件后缀
@@ -37,6 +31,23 @@ type ExecResult = {
   stderr: string
   code: number
   interrupted: boolean
+}
+
+// 超时接管上下文（旧 shell 的临时文件路径和进程引用）
+export type TimeoutTransferContext = {
+  stdoutFile: string
+  stderrFile: string
+  statusFile: string
+  shellProcess: ChildProcess
+  partialOutput: string
+}
+
+export function formatDuration(ms: number): string {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  const min = Math.floor(s / 60)
+  const rem = s % 60
+  return rem > 0 ? `${min}min${rem}s` : `${min}min`
 }
 
 /**
@@ -96,6 +107,7 @@ type QueuedCommand = {
   abortSignal?: AbortSignal
   timeout?: number
   onChunk?: (stdout: string, stderr: string) => void
+  onTimeout?: (ctx: TimeoutTransferContext) => void
   resolve: (result: ExecResult) => void
   reject: (error: Error) => void
 }
@@ -648,7 +660,7 @@ export class PersistentShell {
     if (this.isExecuting || this.commandQueue.length === 0) return
 
     this.isExecuting = true
-    const { command, abortSignal, timeout, onChunk, resolve, reject } =
+    const { command, abortSignal, timeout, onChunk, onTimeout, resolve, reject } =
       this.commandQueue.shift()!
 
     // 中断处理函数
@@ -658,7 +670,7 @@ export class PersistentShell {
     }
 
     try {
-      const result = await this.exec_(command, timeout, onChunk)
+      const result = await this.exec_(command, timeout, onChunk, onTimeout)
 
       // 不需要更新cwd - 在exec_中通过CWD文件处理
 
@@ -681,9 +693,10 @@ export class PersistentShell {
     abortSignal?: AbortSignal,
     timeout?: number,
     onChunk?: (stdout: string, stderr: string) => void,
+    onTimeout?: (ctx: TimeoutTransferContext) => void,
   ): Promise<ExecResult> {
     return new Promise((resolve, reject) => {
-      this.commandQueue.push({ command, abortSignal, timeout, onChunk, resolve, reject })
+      this.commandQueue.push({ command, abortSignal, timeout, onChunk, onTimeout, resolve, reject })
       this.processQueue()
     })
   }
@@ -693,6 +706,7 @@ export class PersistentShell {
     command: string,
     timeout?: number,
     onChunk?: (stdout: string, stderr: string) => void,
+    onTimeout?: (ctx: TimeoutTransferContext) => void,
   ): Promise<ExecResult> {
     /**
      * 直接执行命令，不经过队列。
@@ -790,7 +804,8 @@ export class PersistentShell {
       this.sendToShell(commandParts.join('\n'))
 
       const start = Date.now()
-      let lastOutputSnapshot = ''       // 上次检测到的输出快照，用于判断是否有变化
+      let lastSentStdout = ''           // 上次已发送的 stdout 内容（用于计算 delta）
+      let lastSentStderr = ''           // 上次已发送的 stderr 内容（用于计算 delta）
       let lastChunkCheckTime = 0        // 上次流式输出检查时间
       let firstEmptyChunkSent = false   // 是否已发送过首次空 chunk
       let timer: ReturnType<typeof setTimeout> | null = null
@@ -829,17 +844,21 @@ export class PersistentShell {
             statusFileSize = fs.statSync(this.statusFile).size
           }
 
-          // 流式输出检查：每500ms检查一次，有变化才触发 onChunk
-          if (now - lastChunkCheckTime >= 500) {
+          // 流式输出检查：每CHUNK_CHECK_INTERVAL检查一次，有变化才触发 onChunk（仅发送 delta）
+          if (now - lastChunkCheckTime >= CHUNK_CHECK_INTERVAL) {
             lastChunkCheckTime = now
             const { stdout, stderr } = readOutput()
-            const snapshot = stdout + stderr
-            if (snapshot !== lastOutputSnapshot) {
-              lastOutputSnapshot = snapshot
+            const hasNewStdout = stdout.length > lastSentStdout.length
+            const hasNewStderr = stderr.length > lastSentStderr.length
+            if (hasNewStdout || hasNewStderr) {
+              const deltaStdout = stdout.slice(lastSentStdout.length)
+              const deltaStderr = stderr.slice(lastSentStderr.length)
+              lastSentStdout = stdout
+              lastSentStderr = stderr
               if (onChunk) {
-                onChunk(stdout, stderr)
+                onChunk(deltaStdout, deltaStderr)
               }
-            } else if (!firstEmptyChunkSent && !snapshot && onChunk) {
+            } else if (!firstEmptyChunkSent && !stdout && !stderr && onChunk) {
               // 首次检测到输出为空时发送一次空 chunk
               firstEmptyChunkSent = true
               onChunk('', '')
@@ -856,15 +875,37 @@ export class PersistentShell {
             const { stdout, stderr } = readOutput()
             finish({ stdout, stderr, code: SIGTERM_CODE, interrupted: true })
           } else if (elapsed >= maxTimeout) {
-            // 超过最大执行时间，kill 并返回已有的部分输出
-            this.killChildren()
-            const { stdout, stderr } = readOutput()
-            finish({
-              stdout,
-              stderr: (stderr ? stderr + '\n' : '') + `(timeout ${formatDuration(maxTimeout)})`,
-              code: SIGTERM_CODE,
-              interrupted: this.commandInterrupted,
-            })
+            if (onTimeout) {
+              // 超时接管：将旧 shell 及临时文件交给 TaskManager，新命令创建新 shell
+              const { stdout } = readOutput()
+              // reject 队列中所有等待的命令，防止它们被发到旧 shell
+              this.commandQueue.forEach(cmd =>
+                cmd.reject(new Error('Shell transferred to background task'))
+              )
+              this.commandQueue = []
+              // 调用接管回调
+              onTimeout({
+                stdoutFile: this.stdoutFile,
+                stderrFile: this.stderrFile,
+                statusFile: this.statusFile,
+                shellProcess: this.shell,
+                partialOutput: stdout,
+              })
+              // 重置单例，后续命令自动创建新 shell
+              PersistentShell.instance = null
+              // code=-1 为后台接管标记，Bash.ts 检测此值
+              finish({ stdout: '', stderr: '', code: -1, interrupted: false })
+            } else {
+              // 原有逻辑：kill 并返回已有的部分输出
+              this.killChildren()
+              const { stdout, stderr } = readOutput()
+              finish({
+                stdout,
+                stderr: (stderr ? stderr + '\n' : '') + `(timeout ${formatDuration(maxTimeout)})`,
+                code: SIGTERM_CODE,
+                interrupted: this.commandInterrupted,
+              })
+            }
           } else {
             timer = setTimeout(check, nextInterval)
           }

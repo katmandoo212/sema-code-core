@@ -14,6 +14,7 @@ import { getTokens } from '../util/tokens'
 import { INTERRUPT_MESSAGE, INTERRUPT_MESSAGE_FOR_TOOL_USE } from '../constants/message'
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager'
 import { getEventBus } from '../events/EventSystem'
+import { getTaskManager } from '../manager/TaskManager'
 import { getTools } from '../tools/base/tools'
 import { getMCPManager } from '../services/mcp/MCPManager'
 import { getConfManager } from '../manager/ConfManager'
@@ -60,6 +61,8 @@ export async function* query(
       // 压缩后清空 todos 和 readFileTimestamps（历史上下文已丢失，它们不再有意义）
       agentState.updateTodosIntelligently([]);
       agentState.setReadFileTimestamps({});
+      // 关闭所有后台进程
+      getTaskManager().dispose();
     }
   }
 
@@ -163,7 +166,6 @@ export async function* query(
     toolCalls: toolUseMessages.map(tool => {
       return {
         name: tool.name,
-        args: tool.input as Record<string, any>
       }
     })
   }

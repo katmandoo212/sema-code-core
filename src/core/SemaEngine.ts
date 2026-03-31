@@ -21,6 +21,7 @@ import type { AgentContext } from '../types/agent'
 import { getMCPManager } from '../services/mcp/MCPManager';
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager';
 import { handleCommand } from '../services/commands/runCommand';
+import { getTaskManager } from '../manager/TaskManager';
 
 
 /**
@@ -40,6 +41,13 @@ export class SemaEngine {
   on = <T>(event: string, listener: (data: T) => void) => this.eventBus.on(event, listener);
   once = <T>(event: string, listener: (data: T) => void) => this.eventBus.once(event, listener);
   off = <T>(event: string, listener: (data: T) => void) => this.eventBus.off(event, listener);
+
+  constructor() {
+    // 注入后台任务通知回调：任务完成后将通知注入用户输入队列
+    getTaskManager().setNotifyCallback((msg: string) => {
+      this.processUserInput(msg)
+    })
+  }
 
   /**
    * 创建会话
@@ -86,6 +94,9 @@ export class SemaEngine {
     this.abortCurrentRequest();
     this.pendingInputs = [];  // 清空输入队列，因为这些输入属于旧会话
     this.pendingSession = null;
+
+    // 关闭所有后台进程
+    getTaskManager().dispose();
 
     // 清空所有状态
     stateManager.clearAllState();

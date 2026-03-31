@@ -136,7 +136,6 @@ export interface InputProcessingData {
  */
 export interface ThinkingChunkData {
   id: string;      // 消息唯一ID，对应 Anthropic Message 的 id
-  content: string;
   delta: string;
 }
 
@@ -146,7 +145,6 @@ export interface ThinkingChunkData {
  */
 export interface TextChunkData {
   id: string;      // 消息唯一ID，对应 Anthropic Message 的 id
-  content: string;
   delta: string;
 }
 
@@ -163,7 +161,6 @@ export interface MessageCompleteData {
   /** 工具调用列表（hasToolCalls为true时存在） */
   toolCalls?: Array<{
     name: string;                  // 工具名称
-    args: Record<string, any>;     // 工具参数
   }>;
 }
 
@@ -198,7 +195,7 @@ export interface ToolExecutionCompleteData {
 /**
  * 工具执行中间态事件数据
  * 事件: `tool:execution:chunk`
- * 说明: 命令执行期间，工具结果的中间态（结构与 ToolExecutionCompleteData 相同）
+ * 说明: 命令执行期间，工具结果的中间态（结构与 ToolExecutionCompleteData 相同， content只传delta）
  */
 export type ToolExecutionChunkData = ToolExecutionCompleteData
 
@@ -396,6 +393,31 @@ export interface TaskAgentEndData {
   content: string;          // 结果描述，如 'Interrupted' 或 'Done(12 tools use · 12.1k tokens · 2m 14s)'
 }
 
+
+// ==================== 后台任务相关事件 ====================
+
+/**
+ * 后台任务启动事件数据
+ * 事件: `task:start`
+ */
+export interface TaskStartData {
+  taskId: string;
+  filepath: string;
+  type: 'Bash';
+}
+
+/**
+ * 后台任务结束事件数据
+ * 事件: `task:end`
+ */
+export interface TaskEndData {
+  taskId: string;
+  filepath: string;
+  type: 'Bash';
+  status: 'completed' | 'failed' | 'stopped';
+  exitCode?: number;
+  summary: string;
+}
 
 // ==================== mcp状态相关事件 ====================
 

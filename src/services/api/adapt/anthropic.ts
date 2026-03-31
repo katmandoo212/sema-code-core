@@ -94,12 +94,12 @@ async function streamChat(
           if (delta.type === 'thinking_delta') {
             accumulatedThinking += delta.thinking;
             if (eventBus) {
-              emitChunkEvent(eventBus, 'thinking', messageId, accumulatedThinking, delta.thinking);
+              emitChunkEvent(eventBus, 'thinking', messageId, delta.thinking);
             }
           } else if (delta.type === 'text_delta') {
             accumulatedText += delta.text;
             if (eventBus) {
-              emitChunkEvent(eventBus, 'text', messageId, accumulatedText, delta.text);
+              emitChunkEvent(eventBus, 'text', messageId, delta.text);
             }
           } else if (delta.type === 'input_json_delta') {
             const block = contentBlocks[event.index] as any;

@@ -116,7 +116,6 @@ async function simulateContentStream(
   eventBus: any,
   signal?: AbortSignal,
 ): Promise<void> {
-  let accumulatedContent = ''
   const eventName = type === 'thinking' ? 'message:thinking:chunk' : 'message:text:chunk'
 
   for (let i = 0; i < content.length; i += CACHE_STREAM_CHUNK_SIZE) {
@@ -124,9 +123,8 @@ async function simulateContentStream(
     if (signal?.aborted) return
 
     const chunk = content.slice(i, i + CACHE_STREAM_CHUNK_SIZE)
-    accumulatedContent += chunk
 
-    const chunkData: ThinkingChunkData | TextChunkData = { id: messageId, content: accumulatedContent, delta: chunk }
+    const chunkData: ThinkingChunkData | TextChunkData = { id: messageId, delta: chunk }
     eventBus.emit(eventName, chunkData)
 
     if (i + CACHE_STREAM_CHUNK_SIZE < content.length) {
