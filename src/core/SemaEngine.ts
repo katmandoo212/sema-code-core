@@ -4,21 +4,19 @@ import { logInfo, logDebug, setLogLevel, logWarn } from '../util/log';
 import { initializeSessionId } from '../util/session';
 import { getTokens } from '../util/tokens';
 import { loadHistory } from '../util/history';
-import { getTopicFromUserInput } from '../util/topic';
+import { detectTopicInBackground } from '../util/topic';
 import { processFileReferences } from '../util/fileReference';
-import { createUserMessage } from '../util/message';
-import { generateRulesReminders, generateSkillsReminder } from '../services/agents/systemReminder';
-import { formatSystemPrompt, generatePlanReminders } from '../services/agents/genSystemPrompt';
+import { createUserMessage, buildAdditionalReminders } from '../util/message';
+import { assembleTools } from '../util/assembleTools';
+import { takeNextBatch } from '../util/inputQueue';
+import { formatSystemPrompt } from '../services/agents/genSystemPrompt';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
-import { getTools } from '../tools/base/tools';
-import { Tool } from '../tools/base/Tool';
 import { EventBus } from '../events/EventSystem';
 import { isInterruptedException } from '../types/errors';
-import { Message } from '../types/message';
+import type { Message } from '../types/message';
 import { query } from './Conversation';
 import type { AgentContext } from '../types/agent'
-import { getMCPManager } from '../services/mcp/MCPManager';
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager';
 import { handleCommand } from '../services/commands/runCommand';
 import { getTaskManager } from '../manager/TaskManager';
@@ -29,7 +27,7 @@ import { getTaskManager } from '../manager/TaskManager';
  */
 export class SemaEngine {
   // 待处理的用户输入队列
-  private pendingInputs: Array<{ inputId: string; input: string; originalInput?: string }> = []
+  private pendingInputs: Array<{ inputId: string; input: string; originalInput?: string; silent?: boolean }> = []
   // 待处理的会话ID（只保留最新的一个）
   private pendingSession: string | null = null
   // 当前正在执行的 processQuery Promise（用于等待旧会话结束）
@@ -45,7 +43,7 @@ export class SemaEngine {
   constructor() {
     // 注入后台任务通知回调：任务完成后将通知注入用户输入队列
     getTaskManager().setNotifyCallback((msg: string) => {
-      this.processUserInput(msg)
+      this.processUserInput(msg, undefined, true)
     })
   }
 
@@ -143,37 +141,41 @@ export class SemaEngine {
    * 处理用户输入
    * 如果当前正在处理中，将输入加入队列等待
    */
-  processUserInput(input: string, originalInput?: string): void {
+  processUserInput(input: string, originalInput?: string, silent?: boolean): void {
     const mainAgentState = getStateManager().forAgent(MAIN_AGENT_ID);
     const inputId = crypto.randomUUID().replace(/-/g, '').substring(0, 8)
 
     if (mainAgentState.getCurrentState() === 'processing') {
-      this.pendingInputs.push({ inputId, input: input.trim(), originalInput })
+      this.pendingInputs.push({ inputId, input: input.trim(), originalInput, silent })
       logInfo(`输入已入队，队列长度: ${this.pendingInputs.length}`)
+      if (!silent) {
+        this.emit('input:received', {
+          inputId,
+          input: input.trim(),
+          originalInput,
+          queued: true,
+          queueLength: this.pendingInputs.length,
+        })
+      }
+      return
+    }
+
+    if (!silent) {
       this.emit('input:received', {
         inputId,
         input: input.trim(),
         originalInput,
-        queued: true,
-        queueLength: this.pendingInputs.length,
+        queued: false,
+        queueLength: 0,
       })
-      return
     }
-
-    this.emit('input:received', {
-      inputId,
-      input: input.trim(),
-      originalInput,
-      queued: false,
-      queueLength: 0,
-    })
-    this.startQuery([{ inputId, input: input.trim(), originalInput }]);
+    this.startQuery([{ inputId, input: input.trim(), originalInput, silent }]);
   }
 
   /**
    * 启动一次查询（构建上下文并调用 processQuery）
    */
-  private startQuery(inputs: Array<{ inputId: string; input: string; originalInput?: string }>): void {
+  private startQuery(inputs: Array<{ inputId: string; input: string; originalInput?: string; silent?: boolean }>): void {
     const stateManager = getStateManager();
     const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
     mainAgentState.updateState('processing');
@@ -185,18 +187,10 @@ export class SemaEngine {
 
     // 获取核心配置
     const coreConfig = getConfManager().getCoreConfig();
+    const agentMode = coreConfig?.agentMode || 'Agent';
 
     // 获取工具集
-    let tools: Tool[];
-    const builtinTools = getTools(coreConfig?.useTools);
-    const mcpTools = getMCPManager().getMCPTools();
-    tools = [...builtinTools, ...mcpTools];
-    // 若 Plan 模式，去掉 TodoWrite 工具
-    const agentMode = coreConfig?.agentMode || 'Agent';
-    if (agentMode === 'Plan') {
-      tools = tools.filter(tool => tool.name !== 'TodoWrite');
-    }
-    logInfo(`tools len: ${tools.length} (builtin: ${builtinTools.length}, mcp: ${mcpTools.length})`);
+    const tools = assembleTools(coreConfig?.useTools, agentMode);
 
     // 构建主代理上下文
     const agentContext: AgentContext = {
@@ -227,7 +221,7 @@ export class SemaEngine {
    * @param inputs 待处理的输入数组（多条普通输入或单条命令）
    */
   private async processQuery(
-    inputs: Array<{ inputId: string; input: string; originalInput?: string }>,
+    inputs: Array<{ inputId: string; input: string; originalInput?: string; silent?: boolean }>,
     agentContext: AgentContext,
     agentMode: 'Agent' | 'Plan'
   ): Promise<void> {
@@ -235,15 +229,19 @@ export class SemaEngine {
     const stateManager = getStateManager();
     const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
 
-    // 为每条输入发送独立的 input:processing 事件
+    // 为每条输入发送独立的 input:processing 事件（静默输入跳过）
     for (const item of inputs) {
-      this.emit('input:processing', { inputId: item.inputId, input: item.input, originalInput: item.originalInput })
+      if (!item.silent) {
+        this.emit('input:processing', { inputId: item.inputId, input: item.input, originalInput: item.originalInput })
+      }
     }
 
     try {
-      // 将每条用户输入保存到项目配置的 history
+      // 将每条用户输入保存到项目配置的 history（静默输入跳过）
       for (const item of inputs) {
-        getConfManager().saveUserInputToHistory(item.originalInput || item.input);
+        if (!item.silent) {
+          getConfManager().saveUserInputToHistory(item.originalInput || item.input);
+        }
       }
 
       // 处理命令，收集所有 blocks
@@ -279,7 +277,11 @@ export class SemaEngine {
       // 后台异步执行话题检测，不阻塞主流程（使用所有输入拼接）
       const allOriginalTexts = inputs.map(i => i.originalInput || i.input).join('\n');
       if (!getConfManager().getCoreConfig()?.disableTopicDetection) {
-        this.detectTopicInBackground(allOriginalTexts);
+        detectTopicInBackground(
+          allOriginalTexts,
+          stateManager.currentAbortController,
+          (result) => this.emit('topic:update', result),
+        );
       }
 
       // 处理文件引用以获取补充信息（使用处理后的文本）
@@ -308,7 +310,7 @@ export class SemaEngine {
 
       // 2.2 当前用户输入
       // 构建reminder信息 文件引用 每次输入均添加，首次查询添加 todos\rules，Plan 模式添加 Plan 信息
-      const additionalReminders = this.buildAdditionalReminders(
+      const additionalReminders = buildAdditionalReminders(
         fileReferencesResult.systemReminders,
         messageHistory,
         agentMode,
@@ -365,7 +367,7 @@ export class SemaEngine {
       // 处理同一会话中的待处理输入队列
       if (this.pendingInputs.length > 0) {
         const pending = this.pendingInputs.splice(0)
-        const batch = this.takeNextBatch(pending)
+        const batch = takeNextBatch(pending)
 
         // 剩余的放回队列
         if (pending.length > 0) {
@@ -378,67 +380,6 @@ export class SemaEngine {
         mainAgentState.updateState('idle');
       }
     }
-  }
-
-  /**
-   * 从待处理队列中取出下一批输入
-   * 规则：
-   * - 如果第一条是命令（/开头），单独取出作为一批
-   * - 否则取出所有连续的非命令输入，直到遇到命令为止
-   * 取出的元素从 pending 数组中移除（splice）
-   */
-  private takeNextBatch(
-    pending: Array<{ inputId: string; input: string; originalInput?: string }>
-  ): Array<{ inputId: string; input: string; originalInput?: string }> {
-    if (pending.length === 0) return []
-
-    // 第一条是命令，单独处理
-    if (pending[0].input.startsWith('/')) {
-      return pending.splice(0, 1)
-    }
-
-    // 找到下一个命令的位置
-    const nextCommandIdx = pending.findIndex(p => p.input.startsWith('/'))
-    if (nextCommandIdx === -1) {
-      // 没有命令，全部取出
-      return pending.splice(0)
-    }
-
-    // 取出命令之前的所有普通输入
-    return pending.splice(0, nextCommandIdx)
-  }
-
-  /**
-   * 构建 additionalReminders：文件引用、首次查询、Plan 模式信息、skill信息
-   */
-  private buildAdditionalReminders(
-    systemReminders: Anthropic.ContentBlockParam[],
-    messageHistory: Message[],
-    agentMode: 'Agent' | 'Plan',
-    hasSkillTool: boolean = false,
-  ): Anthropic.ContentBlockParam[] {
-    // 文件引用 每次输入均添加
-    const reminders = [...systemReminders]
-
-    // 判断是否为首次查询（消息历史为空），添加首次查询的额外信息 skills\rules
-    if (messageHistory.length === 0) {
-      // 添加 skills 信息（仅当工具集中包含 Skill 工具时）
-      if (hasSkillTool) {
-        reminders.push(...generateSkillsReminder())
-      }
-
-      // 添加 rules 信息
-      reminders.push(...generateRulesReminders())
-    }
-
-    // 判断是否为首次 Plan 模式查询，添加 Plan 模式信息
-    const stateManager = getStateManager()
-    if (agentMode === 'Plan' && !stateManager.isPlanModeInfoSent()) {
-      reminders.push(...generatePlanReminders())
-      stateManager.markPlanModeInfoSent()
-    }
-
-    return reminders
   }
 
   /**
@@ -482,47 +423,6 @@ export class SemaEngine {
     // 切换到 Plan 模式时，重置 Plan 模式信息发送状态
     if (mode === 'Plan') {
       getStateManager().resetPlanModeInfoSent();
-    }
-  }
-
-  /**
-   * 后台异步检测话题，不阻塞主流程
-   */
-  private async detectTopicInBackground(userInput: string): Promise<void> {
-    // 创建独立的 AbortController 用于话题检测
-    const topicAbortController = new AbortController();
-
-    // 如果主会话被中断，也中断话题检测
-    const stateManager = getStateManager();
-    const mainAbortController = stateManager.currentAbortController;
-
-    // 保存监听器引用，确保能够清理
-    let abortListener: (() => void) | null = null;
-    if (mainAbortController) {
-      abortListener = () => {
-        topicAbortController.abort();
-      };
-      mainAbortController.signal.addEventListener('abort', abortListener, { once: true });
-    }
-
-    try {
-      const topicResult = await getTopicFromUserInput(userInput, topicAbortController.signal);
-
-      if (topicResult) {
-        logDebug(`话题检测结果: ${JSON.stringify(topicResult)}`);
-        // 发送话题更新事件
-        this.emit('topic:update', topicResult);
-      }
-    } catch (error) {
-      // 话题检测失败不影响主流程，只记录调试日志
-      if (!isInterruptedException(error)) {
-        logDebug(`话题检测失败: ${error}`);
-      }
-    } finally {
-      // 清理监听器（防止内存泄漏）
-      if (abortListener && mainAbortController) {
-        mainAbortController.signal.removeEventListener('abort', abortListener);
-      }
     }
   }
 

@@ -1,55 +1,15 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
 import * as crypto from 'crypto'
-import { spawn, type ChildProcess } from 'child_process'
+import { spawn } from 'child_process'
 import { IS_WIN } from '../util/platform'
 import { logInfo, logError, logWarn } from '../util/log'
 import { getEventBus } from '../events/EventSystem'
-import { TaskRecord, TimeoutTransferContext } from '../types/task'
-
-// 内存输出上限 2MB
-const MAX_OUTPUT_SIZE = 2 * 1024 * 1024
-// 输出目录
-const TASK_OUTPUT_DIR = path.join(os.tmpdir(), 'sema-tasks')
-
-// 确保输出目录存在
-function ensureTaskDir() {
-  if (!fs.existsSync(TASK_OUTPUT_DIR)) {
-    fs.mkdirSync(TASK_OUTPUT_DIR, { recursive: true })
-  }
-}
-
-// 获取 shell 信息（用于 spawnBashTask 独立 spawn）
-function getShellForSpawn(): { bin: string; args: string[] } {
-  if (IS_WIN) {
-    const comspec = process.env.ComSpec || 'cmd.exe'
-    return { bin: comspec, args: ['/c'] }
-  }
-  const bin = process.env.SHELL || '/bin/bash'
-  return { bin, args: ['-c'] }
-}
-
-// kill 进程（跨平台）
-function killProcess(proc: ChildProcess) {
-  if (!proc.pid) return
-  try {
-    if (IS_WIN) {
-      try {
-        const { execSync } = require('child_process')
-        execSync(`taskkill /f /t /pid ${proc.pid}`, { stdio: 'ignore', timeout: 5000 })
-      } catch {
-        proc.kill('SIGTERM')
-      }
-    } else {
-      proc.kill('SIGTERM')
-    }
-  } catch (error) {
-    logWarn(`killProcess 失败: ${error}`)
-  }
-}
+import { TaskRecord, TaskListItem, TimeoutTransferContext } from '../types/task'
+import { MAX_OUTPUT_SIZE, TASK_OUTPUT_DIR, ensureTaskDir, getShellForSpawn, killProcess } from '../util/process'
 
 export class TaskManager {
+  private static MAX_FINISHED_TASKS = 10
   private tasks = new Map<string, TaskRecord>()
   private watchers = new Map<string, Set<(delta: string) => void>>()
   private notifyCallback: ((msg: string) => void) | null = null
@@ -64,6 +24,17 @@ export class TaskManager {
 
   getTasks(): TaskRecord[] {
     return Array.from(this.tasks.values())
+  }
+
+  getTaskList(): TaskListItem[] {
+    return Array.from(this.tasks.values()).map(t => ({
+      taskId: t.taskId,
+      pid: t.pid,
+      filepath: t.filepath,
+      status: t.status,
+      type: t.type,
+      command: t.command,
+    }))
   }
 
   getRunningTasks(): TaskRecord[] {
@@ -126,11 +97,12 @@ export class TaskManager {
       ...(IS_WIN ? { windowsHide: true } : {}),
     })
     record._process = childProcess
+    record.pid = childProcess.pid
 
-    logInfo(`[TaskManager] spawnBashTask taskId=${taskId} command=${command}`)
+    logInfo(`[TaskManager] spawnBashTask taskId=${taskId} pid=${childProcess.pid} command=${command}`)
 
     // emit task:start
-    getEventBus().emit('task:start', { taskId, filepath, type: 'Bash' })
+    getEventBus().emit('task:start', { taskId, pid: childProcess.pid, command, filepath, status: record.status, type: 'Bash' })
 
     const appendChunk = (chunk: string) => {
       record.output += chunk
@@ -192,8 +164,11 @@ export class TaskManager {
     }
     this.tasks.set(taskId, record)
 
-    logInfo(`[TaskManager] takeoverTask taskId=${taskId} command=${command}`)
-    getEventBus().emit('task:start', { taskId, filepath, type: 'Bash' })
+    const takeoverPid = ctx.shellProcess.pid
+    record.pid = takeoverPid
+
+    logInfo(`[TaskManager] takeoverTask taskId=${taskId} pid=${takeoverPid} command=${command}`)
+    getEventBus().emit('task:start', { taskId, pid: takeoverPid, command, filepath, status: record.status, type: 'Bash' })
 
     // 记录已读取的文件偏移量
     let stdoutOffset = ctx.partialOutput.length
@@ -295,9 +270,9 @@ export class TaskManager {
   /**
    * 停止指定任务
    */
-  stopTask(taskId: string): void {
+  stopTask(taskId: string): boolean {
     const record = this.tasks.get(taskId)
-    if (!record) return
+    if (!record) return false
 
     // 清理定时器
     if (record._pollTimer) {
@@ -306,30 +281,35 @@ export class TaskManager {
     }
 
     // kill 进程
+    let killed = false
     if (record._process) {
-      killProcess(record._process)
+      killed = killProcess(record._process)
     }
     if (record._shellProcess) {
-      killProcess(record._shellProcess)
+      killed = killProcess(record._shellProcess) || killed
+    }
+
+    if (!killed) {
+      logWarn(`[TaskManager] stopTask taskId=${taskId} kill failed`)
+      return false
     }
 
     record.status = 'stopped'
-    logInfo(`[TaskManager] stopTask taskId=${taskId}`)
+    logInfo(`[TaskManager] stopTask taskId=${taskId} pid=${record.pid}`)
     getEventBus().emit('task:end', {
       taskId,
-      filepath: record.filepath,
-      type: 'Bash',
       status: 'stopped',
       summary: `Background bash command stopped`,
     })
-    this._notify(record)
+    this._pruneFinishedTasks()
+    return true
   }
 
   /**
    * 等待任务完成（Promise）
    * @param onChunk 每次有新增输出时回调，参数为 delta（增量内容）
    */
-  waitForTask(taskId: string, timeout: number = 30000, onChunk?: (delta: string) => void): Promise<TaskRecord> {
+  waitForTask(taskId: string, timeout: number = 30000, onChunk?: (delta: string) => void, abortSignal?: AbortSignal): Promise<TaskRecord> {
     return new Promise((resolve) => {
       const record = this.tasks.get(taskId)
       if (!record) {
@@ -350,24 +330,36 @@ export class TaskManager {
 
       const cleanup = () => {
         if (unwatch) unwatch()
+        clearTimeout(timer)
+        getEventBus().off('task:end', listener)
       }
 
       const timer = setTimeout(() => {
         cleanup()
-        getEventBus().off('task:end', listener)
         resolve(record)
       }, timeout)
 
       const listener = (data: any) => {
         if (data.taskId === taskId) {
-          clearTimeout(timer)
           cleanup()
-          getEventBus().off('task:end', listener)
           resolve(record)
         }
       }
 
       getEventBus().on('task:end', listener)
+
+      // 中断支持：停止等待，不影响后台任务本身
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          cleanup()
+          resolve(record)
+          return
+        }
+        abortSignal.addEventListener('abort', () => {
+          cleanup()
+          resolve(record)
+        }, { once: true })
+      }
     })
   }
 
@@ -377,10 +369,31 @@ export class TaskManager {
   dispose(): void {
     for (const record of this.tasks.values()) {
       if (record.status !== 'running') continue
-      if (record._pollTimer) clearInterval(record._pollTimer)
-      if (record._process) killProcess(record._process)
-      if (record._shellProcess) killProcess(record._shellProcess)
-      record.status = 'stopped'
+      try {
+        if (record._pollTimer) {
+          clearInterval(record._pollTimer)
+          record._pollTimer = undefined
+        }
+        let killed = false
+        if (record._process) {
+          killed = killProcess(record._process)
+        }
+        if (record._shellProcess) {
+          killed = killProcess(record._shellProcess) || killed
+        }
+        if (!killed) {
+          logWarn(`[TaskManager] dispose: kill failed for taskId=${record.taskId} pid=${record.pid}`)
+        }
+        record.status = 'stopped'
+        getEventBus().emit('task:end', {
+          taskId: record.taskId,
+          status: 'stopped',
+          summary: 'Background bash command stopped',
+        })
+      } catch (error) {
+        logError(`[TaskManager] dispose: error cleaning up taskId=${record.taskId}: ${error}`)
+        record.status = 'stopped'
+      }
     }
     this.watchers.clear()
   }
@@ -402,14 +415,26 @@ export class TaskManager {
 
     getEventBus().emit('task:end', {
       taskId: record.taskId,
-      filepath: record.filepath,
-      type: record.type,
       status: record.status,
-      exitCode,
       summary: `Background bash command ${record.status} (exit code ${exitCode})`,
     })
 
     this._notify(record)
+    this._pruneFinishedTasks()
+  }
+
+  /**
+   * 清理已结束的任务，只保留最新的 MAX_FINISHED_TASKS 个
+   */
+  private _pruneFinishedTasks() {
+    const finished = Array.from(this.tasks.values())
+      .filter(t => t.status !== 'running')
+    if (finished.length <= TaskManager.MAX_FINISHED_TASKS) return
+    const toRemove = finished.slice(0, finished.length - TaskManager.MAX_FINISHED_TASKS)
+    for (const t of toRemove) {
+      this.tasks.delete(t.taskId)
+      this.watchers.delete(t.taskId)
+    }
   }
 
   private _notify(record: TaskRecord) {

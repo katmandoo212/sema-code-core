@@ -7,7 +7,13 @@ export const inputSchema = z.strictObject({
 })
 
 type In = typeof inputSchema
-type Out = string
+type Out = {
+  taskId: string
+  message: string
+  taskType: string
+  command: string
+  stopped: boolean
+}
 
 export const TaskStopTool = {
   name: 'TaskStop',
@@ -15,9 +21,6 @@ export const TaskStopTool = {
     return 'Stop a running background task started by the Bash tool with run_in_background=true.'
   },
   isReadOnly() {
-    return false
-  },
-  supportsInterrupt() {
     return false
   },
   inputSchema,
@@ -32,35 +35,46 @@ export const TaskStopTool = {
   },
   genToolResultMessage(output: Out) {
     return {
-      title: 'TaskStop',
+      title: output.taskId,
       summary: '',
-      content: output,
+      content: output.stopped ? `${output.command} · stopped` : output.message,
     }
   },
   getDisplayTitle(input: any) {
     return `TaskStop: ${input?.task_id}`
   },
   genResultForAssistant(data: Out): string {
-    return data
+    return `<message>${data.message}</message>
+<task_id>${data.taskId}</task_id>
+<task_type>${data.taskType}</task_type>
+<command>${data.command}</command>`
   },
   async *call({ task_id }: { task_id: string }, _agentContext: any) {
     const manager = getTaskManager()
     const record = manager.getTask(task_id)
 
     if (!record) {
-      const result = `Task ${task_id} not found.`
-      yield { type: 'result', data: result, resultForAssistant: result }
+      const data: Out = { taskId: task_id, message: `Task ${task_id} not found.`, taskType: '', command: '', stopped: false }
+      yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
       return
     }
 
     if (record.status !== 'running') {
-      const result = `Task is not running (status: ${record.status}).`
-      yield { type: 'result', data: result, resultForAssistant: result }
+      const data: Out = { taskId: task_id, message: `Task is not running (status: ${record.status}).`, taskType: record.type, command: record.command, stopped: false }
+      yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
       return
     }
 
-    manager.stopTask(task_id)
-    const result = `Task ${task_id} stopped successfully.`
-    yield { type: 'result', data: result, resultForAssistant: result }
+    const stopped = manager.stopTask(task_id)
+    const data: Out = {
+      taskId: task_id,
+      message: stopped
+        ? `Successfully stopped task: ${task_id} (${record.command})`
+        : `Failed to stop task: ${task_id} (${record.command}), process may have already exited.`,
+      taskType: record.type,
+      command: record.command,
+      stopped,
+    }
+    yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
   },
 } satisfies Tool<In, Out>

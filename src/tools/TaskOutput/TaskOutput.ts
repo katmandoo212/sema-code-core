@@ -21,7 +21,12 @@ export const inputSchema = z.strictObject({
 })
 
 type In = typeof inputSchema
-type Out = string
+type Out = {
+  taskId: string
+  retrievalStatus: string
+  taskStatus: string
+  output: string
+}
 
 export const TaskOutputTool = {
   name: 'TaskOutput',
@@ -32,46 +37,43 @@ export const TaskOutputTool = {
     return true
   },
   supportsInterrupt() {
-    return false
+    return true
   },
   inputSchema,
-  async validateInput() {
-    return { result: true }
-  },
-  genToolPermission(input: any) {
+  genToolResultMessage(data: Out) {
     return {
-      title: `TaskOutput: ${input?.task_id}`,
-      content: `Retrieve output for task ${input?.task_id}`,
-    }
-  },
-  genToolResultMessage(output: Out) {
-    return {
-      title: 'TaskOutput',
+      title: data.taskId,
       summary: '',
-      content: output,
+      content: data.output || '(no content)',
     }
   },
   getDisplayTitle(input: any) {
-    return `TaskOutput: ${input?.task_id}`
+    return `${input?.task_id}`
   },
   genResultForAssistant(data: Out): string {
-    return data
+    return `<retrieval_status>${data.retrievalStatus}</retrieval_status>
+<task_id>${data.taskId}</task_id>
+<task_type>local_bash</task_type>
+<status>${data.taskStatus}</status>
+<output>
+${data.output}
+</output>`
   },
   async *call({ task_id, block = true, timeout = 30000 }: { task_id: string; block?: boolean; timeout?: number }, agentContext: any) {
     const manager = getTaskManager()
     const record = manager.getTask(task_id)
 
     if (!record) {
-      const result = `<retrieval_status>not_found</retrieval_status>\n<task_id>${task_id}</task_id>`
-      yield { type: 'result', data: result, resultForAssistant: result }
+      const data: Out = { taskId: task_id, retrievalStatus: 'not_found', taskStatus: 'not_found', output: '' }
+      yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
       return
     }
 
     // block=false 或任务已完成，直接返回当前快照
     if (!block || record.status !== 'running') {
       const output = truncateOutput(record.output)
-      const result = buildResult(task_id, record.status === 'running' ? 'running' : record.status, record.status, output)
-      yield { type: 'result', data: result, resultForAssistant: result }
+      const data: Out = { taskId: task_id, retrievalStatus: record.status, taskStatus: record.status, output }
+      yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
       return
     }
 
@@ -89,26 +91,17 @@ export const TaskOutputTool = {
       getEventBus().emit('tool:execution:chunk', chunkData)
     } : undefined
 
-    const finalRecord = await manager.waitForTask(task_id, timeout, onChunk)
-    const isTimeout = finalRecord.status === 'running'
+    const abortSignal = agentContext?.abortController?.signal
+    const finalRecord = await manager.waitForTask(task_id, timeout, onChunk, abortSignal)
+    const interrupted = abortSignal?.aborted ?? false
     const output = truncateOutput(finalRecord.output)
-    const retrievalStatus = isTimeout ? 'timeout' : 'completed'
-    const result = buildResult(task_id, retrievalStatus, finalRecord.status, output)
-    yield { type: 'result', data: result, resultForAssistant: result }
+    const retrievalStatus = interrupted ? 'not_ready' : (finalRecord.status === 'running' ? 'timeout' : 'completed')
+    const data: Out = { taskId: task_id, retrievalStatus, taskStatus: finalRecord.status, output }
+    yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
   },
 } satisfies Tool<In, Out>
 
 function truncateOutput(output: string): string {
   const { truncatedContent } = formatOutput(output)
   return truncatedContent
-}
-
-function buildResult(taskId: string, retrievalStatus: string, taskStatus: string, output: string): string {
-  return `<retrieval_status>${retrievalStatus}</retrieval_status>
-<task_id>${taskId}</task_id>
-<task_type>local_bash</task_type>
-<status>${taskStatus}</status>
-<output>
-${output}
-</output>`
 }

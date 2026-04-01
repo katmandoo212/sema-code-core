@@ -8,13 +8,16 @@ export type TaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
  * 有两种来源：
  * 1. run_in_background=true：Bash 工具直接通过 spawnBashTask() 创建独立子进程
  * 2. 命令执行超时：PersistentShell 将旧 shell 移交给 takeoverTask()，继续轮询其临时文件
+ * 3. 异步Agent
  */
 export interface TaskRecord {
   /** 任务唯一 ID（随机 4 字节 hex） */
   taskId: string
-  /** 任务类型，目前仅支持 Bash */
+  /** 进程 ID，用于确认进程是否已终止 */
+  pid?: number
+  /** 任务类型，Bash Agent */
   type: 'Bash'
-  /** 原始命令字符串 */
+  /** bash命令字符串 或 agent标题 */
   command: string
   /** 触发该任务的 tool_use_id，用于通知回调关联原始请求 */
   toolUseId: string
@@ -52,4 +55,16 @@ export interface TimeoutTransferContext {
   shellProcess: ChildProcess
   /** 超时前已读取到的部分输出，作为任务输出的初始内容 */
   partialOutput: string
+}
+
+/**
+ * 任务列表项（对外暴露的简洁格式）
+ */
+export interface TaskListItem {
+  taskId: string
+  pid?: number
+  filepath: string
+  status: TaskStatus
+  type: string
+  command: string
 }

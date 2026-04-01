@@ -150,7 +150,7 @@ export const FileEditTool = {
       return {
         result: false,
         message:
-          'File has not been read yet. Read it first before writing to it.',
+          'File must be read first',
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },

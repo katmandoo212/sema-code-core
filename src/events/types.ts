@@ -396,13 +396,19 @@ export interface TaskAgentEndData {
 
 // ==================== 后台任务相关事件 ====================
 
+/** 后台任务状态 */
+export type TaskStatus = 'running' | 'completed' | 'failed' | 'stopped';
+
 /**
  * 后台任务启动事件数据
  * 事件: `task:start`
  */
 export interface TaskStartData {
   taskId: string;
+  pid?: number;
+  command: string;
   filepath: string;
+  status: TaskStatus;
   type: 'Bash';
 }
 
@@ -412,11 +418,17 @@ export interface TaskStartData {
  */
 export interface TaskEndData {
   taskId: string;
-  filepath: string;
-  type: 'Bash';
   status: 'completed' | 'failed' | 'stopped';
-  exitCode?: number;
   summary: string;
+}
+
+/**
+ * 后台任务状态更新事件数据
+ * 事件: `task:update`
+ */
+export interface TaskUpdateData {
+  taskId: string;
+  status: TaskStatus;
 }
 
 // ==================== mcp状态相关事件 ====================

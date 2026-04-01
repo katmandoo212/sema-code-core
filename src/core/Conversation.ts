@@ -8,7 +8,7 @@ import {
   createUserMessage,
 } from '../util/message'
 import { logDebug, logWarn, logInfo } from '../util/log'
-import { checkAutoCompact } from '../util/compact'
+import { shouldAutoCompact, autoCompact } from '../util/compact'
 import { MessageCompleteData } from '../events/types'
 import { getTokens } from '../util/tokens'
 import { INTERRUPT_MESSAGE, INTERRUPT_MESSAGE_FOR_TOOL_USE } from '../constants/message'
@@ -46,27 +46,13 @@ export async function* query(
 
   // 自动压缩检查（子代理不进行压缩）
   // 在处理新消息前检查，如果需要压缩，会分离出最新的用户消息
-  if (!isSubagent) {
-    const { messages: processedMessages, wasCompacted } = await checkAutoCompact(messages, abortController)
-    if (wasCompacted) {
-      logDebug(`[Compact] Before: ${messages.length} messages, After: ${processedMessages.length} messages`)
-      logDebug(`[Compact] Compacted messages structure: ${JSON.stringify(processedMessages.map(m => ({
-        type: m.type,
-        role: m.message.role,
-        contentType: Array.isArray(m.message.content)
-          ? m.message.content.map((c: any) => c.type)
-          : typeof m.message.content
-      })), null, 2)}`)
-      messages = processedMessages
-      // 压缩后清空 todos 和 readFileTimestamps（历史上下文已丢失，它们不再有意义）
-      agentState.updateTodosIntelligently([]);
-      agentState.setReadFileTimestamps({});
-      // 关闭所有后台进程
-      getTaskManager().dispose();
-    }
+  if (!isSubagent && await shouldAutoCompact(messages)) {
+    getTaskManager().dispose();
+    messages = await autoCompact(messages, abortController)
+    agentState.updateTodosIntelligently([]);
+    agentState.setReadFileTimestamps({});
   }
 
-  // 获取助手响应
   // 获取助手响应
   let assistantMessage: AssistantMessage
   try {

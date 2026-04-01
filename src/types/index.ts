@@ -157,6 +157,7 @@ export type {
 // 导出 Task 相关类型
 export type {
   TaskStatus,
-  TaskRecord
+  TaskRecord,
+  TaskListItem
 } from './task';
 
