@@ -77,9 +77,10 @@ ${data.output}
       return
     }
 
-    // block=true，等待任务完成，主代理通过 onChunk 接收增量输出
+    // block=true，等待任务完成
+    // Agent 任务无增量输出，只有 Bash 任务才流式推送
     const isMainAgent = agentContext?.agentId === MAIN_AGENT_ID
-    const onChunk = isMainAgent ? (delta: string) => {
+    const onChunk = (isMainAgent && record.type !== 'Agent') ? (delta: string) => {
       const chunkData: ToolExecutionChunkData = {
         agentId: agentContext.agentId,
         toolId: agentContext.currentToolUseID || '',

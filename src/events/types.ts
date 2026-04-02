@@ -172,6 +172,7 @@ export interface MessageCompleteData {
  */
 export interface ToolPermissionRequestData {
   agentId: string;       // 代理ID（主代理为 MAIN_AGENT_ID，子代理为 taskId）
+  toolId: string;        // 工具调用唯一ID（对应 Anthropic ToolUseBlock 的 id），用于精确匹配响应
   toolName: string;                  // 工具名称
   title: string;                     // 工具执行标题
   content: string | Record<string, any>;  // 权限说明文字（字符串或JSON对象）
@@ -217,6 +218,7 @@ export interface ToolExecutionErrorData {
  * 用于向Core返回用户的权限选择
  */
 export interface ToolPermissionResponse {
+  toolId: string;        // 工具调用唯一ID，与请求中的 toolId 对应，用于精确匹配
   toolName: string;      // 工具名称
   selected: string;      // 用户选择的操作标识，如 'agree' | 'allow' | 'refuse' 或其他自定义选项
 }
@@ -381,6 +383,7 @@ export interface TaskAgentStartData {
   subagent_type: string;    // 子代理类型
   description: string;      // 任务描述
   prompt: string;           // 任务提示
+  run_in_background: boolean; // 是否后台运行
 }
 
 /**
@@ -409,7 +412,7 @@ export interface TaskStartData {
   command: string;
   filepath: string;
   status: TaskStatus;
-  type: 'Bash';
+  type: 'Bash' | 'Agent';
 }
 
 /**
@@ -420,15 +423,6 @@ export interface TaskEndData {
   taskId: string;
   status: 'completed' | 'failed' | 'stopped';
   summary: string;
-}
-
-/**
- * 后台任务状态更新事件数据
- * 事件: `task:update`
- */
-export interface TaskUpdateData {
-  taskId: string;
-  status: TaskStatus;
 }
 
 // ==================== mcp状态相关事件 ====================

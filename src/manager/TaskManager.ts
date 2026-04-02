@@ -10,6 +10,7 @@ import { MAX_OUTPUT_SIZE, TASK_OUTPUT_DIR, ensureTaskDir, getShellForSpawn, kill
 
 export class TaskManager {
   private static MAX_FINISHED_TASKS = 10
+  private static MAX_RUNNING_TASKS = 5
   private tasks = new Map<string, TaskRecord>()
   private watchers = new Map<string, Set<(delta: string) => void>>()
   private notifyCallback: ((msg: string) => void) | null = null
@@ -71,6 +72,10 @@ export class TaskManager {
     toolUseId: string,
     agentContext: any,
   ): { taskId: string; filepath: string } {
+    const running = this.getRunningTasks()
+    if (running.length >= TaskManager.MAX_RUNNING_TASKS) {
+      throw new Error(`Maximum number of running background tasks (${TaskManager.MAX_RUNNING_TASKS}) reached. Stop or wait for existing tasks to complete before starting new ones.`)
+    }
     ensureTaskDir()
     const taskId = crypto.randomBytes(4).toString('hex')
     const filepath = path.join(TASK_OUTPUT_DIR, `${taskId}.output`)
@@ -145,6 +150,11 @@ export class TaskManager {
     toolUseId: string,
     agentContext: any,
   ): { taskId: string; filepath: string } {
+    const running = this.getRunningTasks()
+    if (running.length >= TaskManager.MAX_RUNNING_TASKS) {
+      killProcess(ctx.shellProcess)
+      throw new Error(`Maximum number of running background tasks (${TaskManager.MAX_RUNNING_TASKS}) reached. Cannot transfer timed-out command to background.`)
+    }
     ensureTaskDir()
     const taskId = crypto.randomBytes(4).toString('hex')
     const filepath = path.join(TASK_OUTPUT_DIR, `${taskId}.output`)
@@ -268,6 +278,65 @@ export class TaskManager {
   }
 
   /**
+   * 为后台 Agent 创建任务记录并异步执行
+   * @param taskId 复用 Agent.ts 已生成的 taskId
+   * @param description 任务描述（用于通知摘要）
+   * @param toolUseId 触发该任务的 tool_use_id
+   * @param executeFn 实际执行函数，接收独立 AbortController，返回最终结果文本
+   */
+  spawnAgentTask(
+    taskId: string,
+    description: string,
+    toolUseId: string,
+    executeFn: (abortController: AbortController) => Promise<string>,
+  ): { taskId: string; filepath: string } {
+    const running = this.getRunningTasks()
+    if (running.length >= TaskManager.MAX_RUNNING_TASKS) {
+      throw new Error(`Maximum number of running background tasks (${TaskManager.MAX_RUNNING_TASKS}) reached. Stop or wait for existing tasks to complete before starting new ones.`)
+    }
+    ensureTaskDir()
+    const filepath = path.join(TASK_OUTPUT_DIR, `${taskId}.output`)
+    fs.writeFileSync(filepath, '')
+
+    const abortController = new AbortController()
+
+    const record: TaskRecord = {
+      taskId,
+      type: 'Agent',
+      command: description,
+      toolUseId,
+      filepath,
+      status: 'running',
+      output: '',
+      _abortController: abortController,
+    }
+    this.tasks.set(taskId, record)
+
+    logInfo(`[TaskManager] spawnAgentTask taskId=${taskId} description=${description}`)
+    getEventBus().emit('task:start', { taskId, command: description, filepath: '', status: record.status, type: 'Agent' })
+
+    const promise = executeFn(abortController).then((result) => {
+      record.output = result
+      try { fs.writeFileSync(filepath, result) } catch (e) {
+        logWarn(`[TaskManager] writeFileSync failed for agent task: ${e}`)
+      }
+      this._finishTask(record, 0)
+    }).catch((error) => {
+      const isAborted = abortController.signal.aborted
+      const msg = isAborted
+        ? '[Agent interrupted]'
+        : `[Agent error: ${error instanceof Error ? error.message : String(error)}]`
+      if (!record.output) record.output = msg
+      try { fs.appendFileSync(filepath, msg) } catch {}
+      this._finishTask(record, isAborted ? 0 : 1)
+    })
+
+    record._promise = promise
+
+    return { taskId, filepath }
+  }
+
+  /**
    * 停止指定任务
    */
   stopTask(taskId: string): boolean {
@@ -280,13 +349,17 @@ export class TaskManager {
       record._pollTimer = undefined
     }
 
-    // kill 进程
+    // kill 进程 / abort agent
     let killed = false
     if (record._process) {
       killed = killProcess(record._process)
     }
     if (record._shellProcess) {
       killed = killProcess(record._shellProcess) || killed
+    }
+    if (record._abortController) {
+      record._abortController.abort()
+      killed = true
     }
 
     if (!killed) {
@@ -299,7 +372,7 @@ export class TaskManager {
     getEventBus().emit('task:end', {
       taskId,
       status: 'stopped',
-      summary: `Background bash command stopped`,
+      summary: this._formatTaskSummary(record, 'stopped'),
     })
     this._pruneFinishedTasks()
     return true
@@ -381,6 +454,10 @@ export class TaskManager {
         if (record._shellProcess) {
           killed = killProcess(record._shellProcess) || killed
         }
+        if (record._abortController) {
+          record._abortController.abort()
+          killed = true
+        }
         if (!killed) {
           logWarn(`[TaskManager] dispose: kill failed for taskId=${record.taskId} pid=${record.pid}`)
         }
@@ -388,7 +465,7 @@ export class TaskManager {
         getEventBus().emit('task:end', {
           taskId: record.taskId,
           status: 'stopped',
-          summary: 'Background bash command stopped',
+          summary: this._formatTaskSummary(record, 'stopped'),
         })
       } catch (error) {
         logError(`[TaskManager] dispose: error cleaning up taskId=${record.taskId}: ${error}`)
@@ -404,6 +481,13 @@ export class TaskManager {
     cbs.forEach(cb => cb(delta))
   }
 
+  private _formatTaskSummary(record: TaskRecord, status: string): string {
+    const cmd = record.command.length > 50
+      ? record.command.slice(0, 50) + '...'
+      : record.command
+    return `${record.type} "${cmd}" ${status}`
+  }
+
   private _finishTask(record: TaskRecord, exitCode: number) {
     if (record.status !== 'running') return
 
@@ -416,7 +500,7 @@ export class TaskManager {
     getEventBus().emit('task:end', {
       taskId: record.taskId,
       status: record.status,
-      summary: `Background bash command ${record.status} (exit code ${exitCode})`,
+      summary: this._formatTaskSummary(record, record.status),
     })
 
     this._notify(record)
@@ -439,7 +523,17 @@ export class TaskManager {
 
   private _notify(record: TaskRecord) {
     if (!this.notifyCallback) return
-    const msg = `<task-notification>
+    let msg: string
+    if (record.type === 'Agent') {
+      msg = `<task-notification>
+<task-id>${record.taskId}</task-id>
+<tool-use-id>${record.toolUseId}</tool-use-id>
+<status>${record.status}</status>
+<summary>Agent "${record.command}" ${record.status}</summary>
+<result>${record.output}</result>
+</task-notification>`
+    } else {
+      msg = `<task-notification>
 <task-id>${record.taskId}</task-id>
 <tool-use-id>${record.toolUseId}</tool-use-id>
 <output-file>${record.filepath}</output-file>
@@ -447,6 +541,7 @@ export class TaskManager {
 <summary>Background bash command ${record.status} (exit code ${record.exitCode ?? 'N/A'})</summary>
 </task-notification>
 Read the output file to retrieve the result: ${record.filepath}`
+    }
     this.notifyCallback(msg)
   }
 }

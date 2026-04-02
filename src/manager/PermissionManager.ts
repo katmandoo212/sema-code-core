@@ -47,6 +47,7 @@ export type CanUseToolFn = (
   abortController: AbortController,
   assistantMessage: AssistantMessage,
   agentId: string,
+  toolId: string,
 ) => Promise<PermissionResult>
 
 // ==================== 主权限检查函数 ====================
@@ -68,7 +69,8 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   input,
   abortController,
   _assistantMessage,
-  agentId
+  agentId,
+  toolId
 ): Promise<PermissionResult> => {
   checkAbortSignal(abortController)
 
@@ -99,7 +101,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
 
     logDebug(`[Permission]${tool.name} hasGlobalEditPermission: False`)
 
-    return requestPermissionViaEvent(tool, input, null, abortController, agentId)
+    return requestPermissionViaEvent(tool, input, null, abortController, agentId, toolId)
   }
 
   // Bash 工具权限检查
@@ -108,7 +110,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
 
     const allowedTools = projectConfig?.allowedTools || []
     const { command } = inputSchema.parse(input)
-    return await checkBashPermission(tool, command, abortController, allowedTools, agentId)
+    return await checkBashPermission(tool, command, abortController, allowedTools, agentId, toolId)
   }
 
   // Skill 工具权限检查
@@ -125,7 +127,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
       return { result: true }
     }
 
-    return requestPermissionViaEvent(tool, input, null, abortController, agentId)
+    return requestPermissionViaEvent(tool, input, null, abortController, agentId, toolId)
   }
 
   // MCP 工具权限检查
@@ -139,7 +141,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
       return { result: true }
     }
 
-    return requestPermissionViaEvent(tool, input, null, abortController, agentId)
+    return requestPermissionViaEvent(tool, input, null, abortController, agentId, toolId)
   }
 
   logDebug(`[Permission]${tool.name} 非编辑、bash、skill或mcp工具默认允许`)
@@ -190,7 +192,8 @@ async function checkBashPermission(
   command: string,
   abortController: AbortController,
   allowedTools: string[],
-  agentId: string
+  agentId: string,
+  toolId: string
 ): Promise<PermissionResult> {
   // 移除当前工作目录前缀 
   command = command.replace(`cd ${getCwd()} && `, '')
@@ -210,13 +213,13 @@ async function checkBashPermission(
   if (!commandInfo || commandInfo.commandInjectionDetected) {
     return bashToolHasExactMatch(tool, command, allowedTools)
       ? { result: true }
-      : requestPermissionViaEvent(tool, { command }, null, abortController, agentId, false)
+      : requestPermissionViaEvent(tool, { command }, null, abortController, agentId, toolId, false)
   }
 
   if (subCommands.length < 2) {
     return bashToolHasPermission(tool, command, commandInfo.commandPrefix, allowedTools)
       ? { result: true }
-      : requestPermissionViaEvent(tool, { command }, commandInfo.commandPrefix, abortController, agentId)
+      : requestPermissionViaEvent(tool, { command }, commandInfo.commandPrefix, abortController, agentId, toolId)
   }
 
   const allSubCommandsAllowed = subCommands.every(subCmd => {
@@ -228,7 +231,7 @@ async function checkBashPermission(
   // 如果不是所有子命令都被允许，请求权限时使用主命令的前缀
   return allSubCommandsAllowed
     ? { result: true }
-    : requestPermissionViaEvent(tool, { command }, commandInfo.commandPrefix, abortController, agentId)
+    : requestPermissionViaEvent(tool, { command }, commandInfo.commandPrefix, abortController, agentId, toolId)
 }
 
 // ==================== 权限保存 ====================
@@ -289,6 +292,7 @@ async function requestPermissionViaEvent(
   prefix: string | null,
   abortController: AbortController,
   agentId: string,
+  toolId: string,
   showAllow = true
 ): Promise<PermissionResult> {
 
@@ -297,6 +301,7 @@ async function requestPermissionViaEvent(
 
   const requestData: ToolPermissionRequestData = {
     agentId,
+    toolId,
     toolName: tool.name,
     title: permissionInfo?.title || tool.name,
     content: permissionInfo?.content || '',
@@ -314,7 +319,7 @@ async function requestPermissionViaEvent(
     }
 
     const handleResponse = (response: ToolPermissionResponse) => {
-      if (response.toolName !== tool.name) return
+      if (response.toolId !== toolId) return
 
       cleanup()
 

@@ -16,7 +16,7 @@ export interface TaskRecord {
   /** 进程 ID，用于确认进程是否已终止 */
   pid?: number
   /** 任务类型，Bash Agent */
-  type: 'Bash'
+  type: 'Bash' | 'Agent'
   /** bash命令字符串 或 agent标题 */
   command: string
   /** 触发该任务的 tool_use_id，用于通知回调关联原始请求 */
@@ -35,6 +35,10 @@ export interface TaskRecord {
   _shellProcess?: ChildProcess
   /** takeoverTask 轮询旧 shell 临时文件的定时器 */
   _pollTimer?: ReturnType<typeof setInterval>
+  /** Agent 任务专用：独立的 AbortController，用于停止后台 agent */
+  _abortController?: AbortController
+  /** Agent 任务专用：执行 Promise */
+  _promise?: Promise<void>
 }
 
 /**

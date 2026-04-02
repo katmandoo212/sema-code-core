@@ -18,11 +18,13 @@ import { isInterruptedException } from '../../types/errors'
 import { calculateStats, formatSummary, extractResultText } from '../../util/agentStats'
 import { buildAgentSystemPrompt } from '../../services/agents/genSystemPrompt'
 import { generateRulesReminders, generateSkillsReminder } from '../../services/agents/systemReminder'
+import { getTaskManager } from '../../manager/TaskManager'
 
 const inputSchema = z.strictObject({
   description: z.string().describe('A short (3-5 word) description of the task'),
   prompt: z.string().describe('The task for the agent to perform'),
   subagent_type: z.string().describe('The type of specialized agent to use for this task'),
+  run_in_background: z.boolean().optional().describe(`Set to true to run this agent in the background. You will be notified when it completes.`),
 })
 
 type Output = {
@@ -43,15 +45,15 @@ export const TaskTool = {
   },
   genToolResultMessage({ agentType, result }) {
     return {
-      title: `${agentType} agent`,
-      summary: `${agentType} agent completed`,
-      content: result
+      title: `${agentType}`,
+      summary: '',
+      content: ''
     }
   },
   getDisplayTitle(input) {
     return input?.description || TOOL_NAME_FOR_PROMPT
   },
-  async *call({ description, prompt, subagent_type }: z.infer<typeof inputSchema>) {
+  async *call({ description, prompt, subagent_type, run_in_background }: z.infer<typeof inputSchema>, agentContext: any) {
     const start = Date.now()
     const taskId = nanoid()
     const eventBus = getEventBus()
@@ -76,36 +78,22 @@ export const TaskTool = {
 
       logDebug(`Starting ${agentConfig.name} agent with prompt: ${prompt}`)
 
-      // 2. 发送 task:agent:start 事件
-      const startEventData: TaskAgentStartData = {
-        taskId,
-        subagent_type: agentConfig.name,
-        description,
-        prompt,
-      }
-      eventBus.emit('task:agent:start', startEventData)
-
       // 3. 准备子代理的系统提示（包含 agentConfig.prompt + notes + env + gitStatus）
       const systemPromptContent = await buildAgentSystemPrompt(agentConfig.prompt)
 
-      // 4. 获取子代理允许使用的工具（排除 Task 工具，防止嵌套）
+      // 4. 获取子代理允许使用的工具（排除 任务与代理 工具，防止嵌套）
+      const excludedTools = [TOOL_NAME_FOR_PROMPT, 'TaskOutput', 'TaskStop']
       let subagentTools: Tool[]
       if (!agentConfig.tools || agentConfig.tools === '*') {
-        subagentTools = getTools().filter(t => t.name !== TOOL_NAME_FOR_PROMPT)
+        subagentTools = getTools().filter(t => !excludedTools.includes(t.name))
       } else {
-        subagentTools = getTools(agentConfig.tools).filter(t => t.name !== TOOL_NAME_FOR_PROMPT)
+        subagentTools = getTools(agentConfig.tools).filter(t => !excludedTools.includes(t.name))
       }
 
       logDebug(`Subagent ${agentConfig.name} has ${subagentTools.length} tools available`)
 
-      // 5. 创建用户消息（包含 skills 和 rules 信息）
+      // 5. 创建用户消息（包含 rules 信息）
       const additionalReminders: Anthropic.ContentBlockParam[] = []
-
-      // 添加 skills 信息（仅当子代理包含 Skill 工具时）
-      if (subagentTools.some(t => t.name === 'Skill')) {
-        const skillsReminders = generateSkillsReminder()
-        additionalReminders.push(...skillsReminders)
-      }
 
       // 添加 rules 信息
       const rulesReminders = generateRulesReminders()
@@ -116,7 +104,62 @@ export const TaskTool = {
         { type: 'text' as const, text: prompt }
       ])
 
-      // 6. 获取共享的 AbortController（子代理与主代理共用，中断时一起中断）
+      // 6. 后台模式：独立 AbortController，立即返回
+      if (run_in_background) {
+        const taskManager = getTaskManager()
+        const toolUseId = agentContext?.currentToolUseID || ''
+        const agentModel: 'quick' | 'main' = (agentConfig.model === 'quick' || agentConfig.model === 'haiku') ? 'quick' : 'main'
+
+        eventBus.emit('task:agent:start', { taskId, subagent_type: agentConfig.name, description, prompt, run_in_background: true } satisfies TaskAgentStartData)
+
+        taskManager.spawnAgentTask(taskId, description, toolUseId, async (bgAbortController) => {
+          const bgContext: AgentContext = {
+            agentId: taskId,
+            abortController: bgAbortController,
+            tools: subagentTools,
+            model: agentModel,
+          }
+          const bgResultMessages: any[] = []
+          try {
+            for await (const message of query([userMessage], systemPromptContent, bgContext)) {
+              bgResultMessages.push(message)
+            }
+            const isInterrupted = bgAbortController.signal.aborted
+            const stats = calculateStats(bgResultMessages, start)
+            const summary = formatSummary(stats, isInterrupted ? 'interrupted' : 'completed')
+            eventBus.emit('task:agent:end', {
+              taskId,
+              status: isInterrupted ? 'interrupted' : 'completed',
+              content: summary,
+            } satisfies TaskAgentEndData)
+            return extractResultText(bgResultMessages)
+          } catch (error) {
+            const isInterrupted = isInterruptedException(error) || bgAbortController.signal.aborted
+            const stats = calculateStats(bgResultMessages, start)
+            const summary = isInterrupted
+              ? formatSummary(stats, 'interrupted')
+              : `Error: ${error instanceof Error ? error.message : String(error)}`
+            eventBus.emit('task:agent:end', {
+              taskId,
+              status: isInterrupted ? 'interrupted' : 'failed',
+              content: summary,
+            } satisfies TaskAgentEndData)
+            throw error
+          } finally {
+            stateManager.forAgent(taskId).clearAllState()
+          }
+        })
+
+        const launchMsg = `Async agent launched successfully.\nagentId: ${taskId} (internal ID - do not mention to user.)\nThe agent is working in the background. You will be notified automatically when it completes.\nDo not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.`
+        yield {
+          type: 'result',
+          data: { agentType: agentConfig.name, result: launchMsg, durationMs: Date.now() - start },
+          resultForAssistant: launchMsg,
+        }
+        return
+      }
+
+      // 7. 前台模式：获取共享的 AbortController（子代理与主代理共用，中断时一起中断）
       const sharedAbortController = stateManager.currentAbortController
 
       if (!sharedAbortController) {
@@ -129,7 +172,7 @@ export const TaskTool = {
         return
       }
 
-      // 7. 构建子代理上下文
+      // 8. 构建子代理上下文
       const subagentContext: AgentContext = {
         agentId: taskId,
         abortController: sharedAbortController,
@@ -137,7 +180,10 @@ export const TaskTool = {
         model: (agentConfig.model === 'quick' || agentConfig.model === 'haiku') ? 'quick' : 'main'
       }
 
-      // 8. 执行子代理查询
+      // 9. 发送 task:agent:start 事件
+      eventBus.emit('task:agent:start', { taskId, subagent_type: agentConfig.name, description, prompt, run_in_background: false } satisfies TaskAgentStartData)
+
+      // 10. 执行子代理查询
       const messages = [userMessage]
       let resultText = ''
       const resultMessages = []

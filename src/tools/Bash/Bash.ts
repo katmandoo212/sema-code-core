@@ -183,21 +183,34 @@ export const BashTool = {
 
     // ① run_in_background=true → 直接 spawn 独立进程
     if (run_in_background) {
-      const { taskId, filepath } = getTaskManager().spawnBashTask(
-        command,
-        agentContext.currentToolUseID || '',
-        agentContext,
-      )
-      const msg = `Command running in background. Task ID: ${taskId}. Output: ${filepath}`
-      const data: Out = {
-        stdout: msg,
-        stdoutLines: 1,
-        stderr: '',
-        stderrLines: 0,
-        interrupted: false,
-        command,
+      try {
+        const { taskId, filepath } = getTaskManager().spawnBashTask(
+          command,
+          agentContext.currentToolUseID || '',
+          agentContext,
+        )
+        const msg = `Command running in background. Task ID: ${taskId}. Output: ${filepath}`
+        const data: Out = {
+          stdout: msg,
+          stdoutLines: 1,
+          stderr: '',
+          stderrLines: 0,
+          interrupted: false,
+          command,
+        }
+        yield { type: 'result', data, resultForAssistant: msg }
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error)
+        const data: Out = {
+          stdout: '',
+          stdoutLines: 0,
+          stderr: errMsg,
+          stderrLines: 1,
+          interrupted: false,
+          command,
+        }
+        yield { type: 'result', data, resultForAssistant: errMsg }
       }
-      yield { type: 'result', data, resultForAssistant: msg }
       return
     }
 
