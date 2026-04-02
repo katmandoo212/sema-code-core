@@ -78,6 +78,12 @@ export async function queryLLM(
 
     logLLMResponse(result)
 
+    // 检测空响应：既没有文本内容，也没有工具调用（统一在这里处理）
+    if (!signal.aborted && result.message.content.length === 0) {
+      logError(`API返回空响应: messageId=${result.message.id}, model=${modelProfile.modelName}, stopReason=${result.message.stop_reason}`)
+      throw new Error('API返回空响应：模型暂时没有返回有效内容，请重试一次。若多次重试仍失败，请稍后再试。')
+    }
+
     // 保存到缓存（仅当内容或工具调用非空时，且未被中断）
     if (shouldUseCache && !signal.aborted) {
       const hasContent = result.message.content.some(block =>
