@@ -20,6 +20,18 @@ import { compressImage } from '../../util/imageCompress'
 const MAX_LINES_TO_RENDER = 5
 const MAX_OUTPUT_SIZE = 2 * 1024 * 1024 // 2MB in bytes
 export const PDF_NOT_SUPPORTED_MESSAGE = 'PDF files are not supported for direct reading. Please use the Bash tool with pdftotext command to read content page by page.'
+export const DOC_NOT_SUPPORTED_MESSAGE = `DOC/DOCX files are not supported for direct reading. Please use the Bash tool to extract text content:
+
+For .docx files (recommended):
+  python -c "import zipfile,xml.etree.ElementTree as ET; root=ET.parse(zipfile.ZipFile('your_file.docx').open('word/document.xml')).getroot(); ns='http://schemas.openxmlformats.org/wordprocessingml/2006/main'; [print(''.join(t.text for t in p.iter(f'{{{ns}}}t') if t.text)) for p in root.iter(f'{{{ns}}}p')]"
+
+For .doc files on Windows:
+  python -c "import win32com.client; w=win32com.client.Dispatch('Word.Application'); w.Visible=False; d=w.Documents.Open(r'C:\\\\full\\\\path\\\\to\\\\your_file.doc'); print(d.Content.Text); d.Close(); w.Quit()"
+  Note: Requires pywin32 (install with: pip install pywin32)
+
+For .doc files on Linux/Mac:
+  soffice --headless --convert-to txt your_file.doc
+  Note: Requires LibreOffice`
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
 const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = {
@@ -155,6 +167,15 @@ export const FileReadTool = {
       }
     }
 
+    // DOC/DOCX files should be read via Bash tool
+    const lowerExtForDoc = extname(fullFilePath).toLowerCase()
+    if (lowerExtForDoc === '.doc' || lowerExtForDoc === '.docx') {
+      return {
+        result: false,
+        message: DOC_NOT_SUPPORTED_MESSAGE,
+      }
+    }
+
     // If file is too large and no offset/limit provided (skip check for images)
     const isImageFile = IMAGE_EXTENSIONS.has(extname(fullFilePath).toLowerCase())
     if (!isImageFile && fileSize > MAX_OUTPUT_SIZE && !offset && !limit) {
@@ -184,6 +205,11 @@ export const FileReadTool = {
     // PDF files are not supported for direct reading
     if (fileExtension.toLowerCase() === '.pdf') {
       throw new Error(PDF_NOT_SUPPORTED_MESSAGE)
+    }
+
+    // DOC/DOCX files are not supported for direct reading
+    if (fileExtension.toLowerCase() === '.doc' || fileExtension.toLowerCase() === '.docx') {
+      throw new Error(DOC_NOT_SUPPORTED_MESSAGE)
     }
 
     // 检测是否为图片文件

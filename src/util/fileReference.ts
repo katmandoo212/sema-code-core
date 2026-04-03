@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { normalizeFilePath } from './file'
 import { logWarn, logInfo } from './log'
 import { MAX_LINES_TO_READ } from '../tools/Read/prompt'
-import { PDF_NOT_SUPPORTED_MESSAGE } from '../tools/Read/Read'
+import { PDF_NOT_SUPPORTED_MESSAGE, DOC_NOT_SUPPORTED_MESSAGE } from '../tools/Read/Read'
 import { FileReferenceInfo } from '../types/index'
 import { getCwd } from './cwd'
 import * as fs from 'fs'
@@ -183,6 +183,16 @@ async function processSingleReference(
       systemReminders.push({
         type: 'text' as const,
         text: `<system-reminder>\n${PDF_NOT_SUPPORTED_MESSAGE}\n</system-reminder>`
+      })
+      return { systemReminders, supplementaryInfo }
+    }
+
+    // 检查是否为 DOC/DOCX 文件
+    const docExt = path.extname(fullPath).toLowerCase()
+    if (docExt === '.doc' || docExt === '.docx') {
+      systemReminders.push({
+        type: 'text' as const,
+        text: `<system-reminder>\n${DOC_NOT_SUPPORTED_MESSAGE}\n</system-reminder>`
       })
       return { systemReminders, supplementaryInfo }
     }
