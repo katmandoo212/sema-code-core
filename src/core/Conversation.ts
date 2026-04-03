@@ -106,7 +106,7 @@ export async function* query(
     return
   }
 
-  yield assistantMessage // 生成助手消息
+  // yield assistantMessage // 生成助手消息
 
   // 检测输出是否被截断（stop_reason === 'max_tokens'）
   const isTruncated = assistantMessage.message.stop_reason === 'max_tokens'
@@ -136,6 +136,7 @@ export async function* query(
       })
     }
   }
+  yield assistantMessage // 生成助手消息
 
   // 过滤出工具使用消息
   const toolUseMessages = assistantMessage.message.content.filter(
