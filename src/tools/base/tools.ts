@@ -12,6 +12,7 @@ import { SkillTool } from '../Skill/Skill'
 import { TaskTool } from '../Agent/Agent'
 import { AskUserQuestionTool } from '../AskUserQuestion/AskUserQuestion'
 import { ExitPlanModeTool } from '../ExitPlanMode/ExitPlanMode'
+import { WebFetchTool } from '../WebFetch/WebFetch'
 import { getConfManager } from '../../manager/ConfManager'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { memoize } from 'lodash-es'
@@ -43,6 +44,7 @@ export const getBuiltinTools = (): Tool[] => {
     NotebookEditTool as unknown as Tool,
     AskUserQuestionTool as unknown as Tool,
     ExitPlanModeTool as unknown as Tool,
+    WebFetchTool as unknown as Tool
   ]
 }
 

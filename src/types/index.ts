@@ -9,6 +9,7 @@ export interface SemaCoreConfig {
   skipBashExecPermission?: boolean;  // 是否跳过bash执行权限检查，默认 否
   skipSkillPermission?: boolean;     // 是否跳过Skill权限检查，默认 否
   skipMCPToolPermission?: boolean;   // 是否跳过MCP工具权限检查，默认 否
+  skipWebFetchPermission?: boolean;  // 是否跳过WebFetch权限检查，默认 否
   enableLLMCache?: boolean;          // 是否开启LLM缓存，默认 否 建议只在重复测试时使用
   useTools?: string[] | null;        // 限定使用的工具 默认 null 使用所有工具
   agentMode?: 'Agent' | 'Plan' ;     // 默认 'Agent'
@@ -17,16 +18,17 @@ export interface SemaCoreConfig {
 }
 
 // 支持动态更新的核心配置字段
-export type UpdatableCoreConfigKeys = 'stream' | 'thinking' | 'systemPrompt' | 'customRules' | 'skipFileEditPermission' | 'skipBashExecPermission' | 'skipSkillPermission' | 'skipMCPToolPermission' | 'enableLLMCache' | 'enableClaudeCodeCompat';
+export type UpdatableCoreConfigKeys = 'stream' | 'thinking' | 'systemPrompt' | 'customRules' | 'skipFileEditPermission' | 'skipBashExecPermission' | 'skipSkillPermission' | 'skipMCPToolPermission' | 'skipWebFetchPermission' | 'enableLLMCache' | 'enableClaudeCodeCompat';
 
 // 默认核心配置
 export const defaultCoreConfig = {
   stream: false,
   thinking: false,
-  skipFileEditPermission: true,
+  skipFileEditPermission: false,
   skipBashExecPermission: false,
   skipSkillPermission: false,
   skipMCPToolPermission: false,
+  skipWebFetchPermission: false,
   systemPrompt: "You are Sema, AIRC's Agent AI for coding.",
   customRules: "- 中文回答",
   enableLLMCache: false,

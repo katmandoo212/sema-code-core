@@ -36,6 +36,9 @@ const SKILL_TOOL_NAME = 'Skill'
 // MCP 工具名称前缀
 const MCP_TOOL_PREFIX = 'mcp__'
 
+// WebFetch 工具名称
+const WEBFETCH_TOOL_NAME = 'WebFetch'
+
 // ==================== 类型定义 ====================
 
 type PermissionResult = { result: true } | { result: false; message: string }
@@ -61,6 +64,22 @@ function isSkillTool(tool: Tool): boolean {
 
 function isMCPTool(tool: Tool): boolean {
   return tool.name.startsWith(MCP_TOOL_PREFIX)
+}
+
+function isWebFetchTool(tool: Tool): boolean {
+  return tool.name === WEBFETCH_TOOL_NAME
+}
+
+/**
+ * 从 URL 中提取域名（不含协议、端口、路径）
+ */
+function extractDomain(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname
+  } catch {
+    return null
+  }
 }
 
 export const hasPermissionsToUseTool: CanUseToolFn = async (
@@ -142,7 +161,26 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
     return requestPermissionViaEvent(tool, input, null, abortController, agentId)
   }
 
-  logDebug(`[Permission]${tool.name} 非编辑、bash、skill或mcp工具默认允许`)
+  // WebFetch 工具权限检查
+  if (isWebFetchTool(tool)) {
+    if (coreConfig?.skipWebFetchPermission) {
+      return { result: true }
+    }
+
+    const allowedTools = projectConfig?.allowedTools || []
+    const url = (input as any).url
+
+    if (url) {
+      const domain = extractDomain(url)
+      if (domain && allowedTools.includes(`${WEBFETCH_TOOL_NAME}(${domain})`)) {
+        return { result: true }
+      }
+    }
+
+    return requestPermissionViaEvent(tool, input, null, abortController, agentId)
+  }
+
+  logDebug(`[Permission]${tool.name} 非编辑、bash、skill、mcp或webfetch工具默认允许`)
 
   // 其他工具默认允许
   return { result: true }
@@ -276,6 +314,13 @@ function getPermissionKey(tool: Tool, input: ToolInput, prefix: string | null): 
   // MCP 工具直接使用工具名作为权限键
   if (isMCPTool(tool)) {
     return tool.name
+  }
+
+  // WebFetch 工具使用 WebFetch(domain) 格式作为权限键
+  if (isWebFetchTool(tool)) {
+    const url = (input as any).url || ''
+    const domain = extractDomain(url)
+    return domain ? `${tool.name}(${domain})` : tool.name
   }
 
   return tool.name
@@ -427,6 +472,19 @@ function buildPermissionOptions(
     return {
       agree: '确认',
       allow: `确认，本项目不再询问 ${tool.name} 工具`,
+      refuse: '拒绝'
+    }
+  }
+
+  // WebFetch 工具
+  if (isWebFetchTool(tool)) {
+    const url = (input as any).url || ''
+    const domain = extractDomain(url)
+    return {
+      agree: '确认',
+      allow: domain
+        ? `确认，本项目不再询问 ${domain} 域名`
+        : '确认，本项目不再询问此域名',
       refuse: '拒绝'
     }
   }
