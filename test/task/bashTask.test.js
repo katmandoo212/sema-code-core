@@ -154,10 +154,10 @@ await test('stopTask()：进程被杀，status=stopped，task:end触发', async 
   await sleep(200)
   eventBus.off('task:end', onEnd)
 
-  assert(tm.getTask(taskId).status === 'stopped', `status应为stopped`)
+  assert(tm.getTask(taskId).status === 'killed', `status应为stopped`)
   assert(!tm.getRunningTasks().some(t => t.taskId === taskId), 'stopped后不应在getRunningTasks中')
   assert(endEvent?.taskId === taskId, `task:end应触发`)
-  assert(endEvent?.status === 'stopped', `task:end status应为stopped`)
+  assert(endEvent?.status === 'killed', `task:end status应为stopped`)
 })
 
 await test('waitForTask() timeout：任务运行中时在指定时间内resolve', async () => {
@@ -235,7 +235,7 @@ await test('接管后 stopTask()：status=stopped，poll timer清理', async () 
   await sleep(200)
 
   const record = tm.getTask(taskId)
-  assert(record.status === 'stopped', `status应为stopped，实际=${record.status}`)
+  assert(record.status === 'killed', `status应为stopped，实际=${record.status}`)
   assert(!record._pollTimer, `pollTimer应已清理`)
 })
 
@@ -330,8 +330,8 @@ await test('dispose()：所有running任务被停止', async () => {
   tm.dispose()
   await sleep(200)
 
-  assert(tm.getTask(id1).status === 'stopped', `task1应stopped，实际=${tm.getTask(id1).status}`)
-  assert(tm.getTask(id2).status === 'stopped', `task2应stopped，实际=${tm.getTask(id2).status}`)
+  assert(tm.getTask(id1).status === 'killed', `task1应stopped，实际=${tm.getTask(id1).status}`)
+  assert(tm.getTask(id2).status === 'killed', `task2应stopped，实际=${tm.getTask(id2).status}`)
 })
 
 // ─── 汇总 ────────────────────────────────────────────────────────────────────

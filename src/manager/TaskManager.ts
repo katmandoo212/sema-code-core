@@ -35,6 +35,9 @@ export class TaskManager {
       status: t.status,
       type: t.type,
       command: t.command,
+      agentType: t.agentType,
+      startTime: t.startTime,
+      endTime: t.endTime,
     }))
   }
 
@@ -91,6 +94,7 @@ export class TaskManager {
       filepath,
       status: 'running',
       output: '',
+      startTime: Date.now(),
     }
     this.tasks.set(taskId, record)
 
@@ -171,6 +175,7 @@ export class TaskManager {
       status: 'running',
       output: ctx.partialOutput,
       _shellProcess: ctx.shellProcess,
+      startTime: Date.now(),
     }
     this.tasks.set(taskId, record)
 
@@ -282,13 +287,14 @@ export class TaskManager {
    * @param taskId 复用 Agent.ts 已生成的 taskId
    * @param description 任务描述（用于通知摘要）
    * @param toolUseId 触发该任务的 tool_use_id
-   * @param executeFn 实际执行函数，接收独立 AbortController，返回最终结果文本
+   * @param executeFn 实际执行函数，接收独立 AbortController，返回结果文本和可选的 usage 统计
    */
   spawnAgentTask(
     taskId: string,
     description: string,
     toolUseId: string,
-    executeFn: (abortController: AbortController) => Promise<string>,
+    executeFn: (abortController: AbortController) => Promise<string | { result: string; usage?: { totalTokens: number; toolUses: number; durationMs: number } }>,
+    agentType?: string,
   ): { taskId: string; filepath: string } {
     const running = this.getRunningTasks()
     if (running.length >= TaskManager.MAX_RUNNING_TASKS) {
@@ -309,14 +315,19 @@ export class TaskManager {
       status: 'running',
       output: '',
       _abortController: abortController,
+      startTime: Date.now(),
+      agentType,
     }
     this.tasks.set(taskId, record)
 
     logInfo(`[TaskManager] spawnAgentTask taskId=${taskId} description=${description}`)
-    getEventBus().emit('task:start', { taskId, command: description, filepath: '', status: record.status, type: 'Agent' })
+    getEventBus().emit('task:start', { taskId, command: description, filepath: '', status: record.status, type: 'Agent', agentType })
 
-    const promise = executeFn(abortController).then((result) => {
+    const promise = executeFn(abortController).then((raw) => {
+      const result = typeof raw === 'string' ? raw : raw.result
+      const usage = typeof raw === 'string' ? undefined : raw.usage
       record.output = result
+      if (usage) record.usage = usage
       try { fs.writeFileSync(filepath, result) } catch (e) {
         logWarn(`[TaskManager] writeFileSync failed for agent task: ${e}`)
       }
@@ -334,6 +345,20 @@ export class TaskManager {
     record._promise = promise
 
     return { taskId, filepath }
+  }
+
+  /**
+   * 停止所有正在运行的任务
+   */
+  stopAllTasks(): number {
+    const running = this.getRunningTasks()
+    let count = 0
+    for (const record of running) {
+      if (this.stopTask(record.taskId)) {
+        count++
+      }
+    }
+    return count
   }
 
   /**
@@ -367,13 +392,20 @@ export class TaskManager {
       return false
     }
 
-    record.status = 'stopped'
+    record.status = 'killed'
+    record.endTime = Date.now()
     logInfo(`[TaskManager] stopTask taskId=${taskId} pid=${record.pid}`)
     getEventBus().emit('task:end', {
       taskId,
-      status: 'stopped',
-      summary: this._formatTaskSummary(record, 'stopped'),
+      status: 'killed',
+      summary: this._formatTaskSummary(record, 'killed'),
     })
+
+    // Agent 被中止时也发送 task-notification（与正常完成一致，status 为 killed）
+    if (record.type === 'Agent') {
+      this._notify(record)
+    }
+
     this._pruneFinishedTasks()
     return true
   }
@@ -386,7 +418,7 @@ export class TaskManager {
     return new Promise((resolve) => {
       const record = this.tasks.get(taskId)
       if (!record) {
-        resolve({ taskId, type: 'Bash', command: '', toolUseId: '', filepath: '', status: 'failed', output: '' })
+        resolve({ taskId, type: 'Bash', command: '', toolUseId: '', filepath: '', status: 'failed', output: '', startTime: 0 })
         return
       }
 
@@ -461,17 +493,18 @@ export class TaskManager {
         if (!killed) {
           logWarn(`[TaskManager] dispose: kill failed for taskId=${record.taskId} pid=${record.pid}`)
         }
-        record.status = 'stopped'
+        record.status = 'killed'
         getEventBus().emit('task:end', {
           taskId: record.taskId,
-          status: 'stopped',
-          summary: this._formatTaskSummary(record, 'stopped'),
+          status: 'killed',
+          summary: this._formatTaskSummary(record, 'killed'),
         })
       } catch (error) {
         logError(`[TaskManager] dispose: error cleaning up taskId=${record.taskId}: ${error}`)
-        record.status = 'stopped'
+        record.status = 'killed'
       }
     }
+    this.tasks.clear()
     this.watchers.clear()
   }
 
@@ -493,6 +526,7 @@ export class TaskManager {
 
     record.status = exitCode === 0 ? 'completed' : 'failed'
     record.exitCode = exitCode
+    record.endTime = Date.now()
 
     // 清理 watchers
     this.watchers.delete(record.taskId)
@@ -525,12 +559,15 @@ export class TaskManager {
     if (!this.notifyCallback) return
     let msg: string
     if (record.type === 'Agent') {
+      const usageTag = record.usage
+        ? `\n<usage><total_tokens>${record.usage.totalTokens}</total_tokens><tool_uses>${record.usage.toolUses}</tool_uses><duration_ms>${record.usage.durationMs}</duration_ms></usage>`
+        : ''
       msg = `<task-notification>
 <task-id>${record.taskId}</task-id>
 <tool-use-id>${record.toolUseId}</tool-use-id>
 <status>${record.status}</status>
 <summary>Agent "${record.command}" ${record.status}</summary>
-<result>${record.output}</result>
+<result>${record.output}</result>${usageTag}
 </task-notification>`
     } else {
       msg = `<task-notification>

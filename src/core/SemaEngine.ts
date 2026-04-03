@@ -123,6 +123,7 @@ export class SemaEngine {
     const usage = getTokens(mainAgentState.getMessageHistory())
 
     const sessionData = {
+      pid: process.pid,
       workingDir: coreConfig?.workingDir,
       sessionId: stateManager.getSessionId(),
       historyLoaded: !!sessionId,

@@ -23,7 +23,7 @@ import { getTaskManager } from '../../manager/TaskManager'
 const inputSchema = z.strictObject({
   description: z.string().describe('A short (3-5 word) description of the task'),
   prompt: z.string().describe('The task for the agent to perform'),
-  subagent_type: z.string().describe('The type of specialized agent to use for this task'),
+  subagent_type: z.string().optional().default('general-purpose').describe('The type of specialized agent to use for this task'),
   run_in_background: z.boolean().optional().describe(`Set to true to run this agent in the background. You will be notified when it completes.`),
 })
 
@@ -132,7 +132,14 @@ export const TaskTool = {
               status: isInterrupted ? 'interrupted' : 'completed',
               content: summary,
             } satisfies TaskAgentEndData)
-            return extractResultText(bgResultMessages)
+            return {
+              result: extractResultText(bgResultMessages),
+              usage: {
+                totalTokens: stats.totalTokens,
+                toolUses: stats.toolUseCount,
+                durationMs: stats.durationMs,
+              },
+            }
           } catch (error) {
             const isInterrupted = isInterruptedException(error) || bgAbortController.signal.aborted
             const stats = calculateStats(bgResultMessages, start)
@@ -148,7 +155,7 @@ export const TaskTool = {
           } finally {
             stateManager.forAgent(taskId).clearAllState()
           }
-        })
+        }, agentConfig.name)
 
         const launchMsg = `Async agent launched successfully.\nagentId: ${taskId} (internal ID - do not mention to user.)\nThe agent is working in the background. You will be notified automatically when it completes.\nDo not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.`
         yield {

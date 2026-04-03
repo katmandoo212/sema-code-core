@@ -1,6 +1,6 @@
 import { type ChildProcess } from 'child_process'
 
-export type TaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
+export type TaskStatus = 'running' | 'completed' | 'failed' | 'killed'
 
 /**
  * 后台任务记录
@@ -39,6 +39,18 @@ export interface TaskRecord {
   _abortController?: AbortController
   /** Agent 任务专用：执行 Promise */
   _promise?: Promise<void>
+  /** Agent 任务专用：子代理类型（对应 subagent_type） */
+  agentType?: string
+  /** 任务启动时间戳（ms） */
+  startTime: number
+  /** 任务结束时间戳（ms） */
+  endTime?: number
+  /** Agent 任务专用：执行统计（tokens / 工具调用 / 耗时） */
+  usage?: {
+    totalTokens: number
+    toolUses: number
+    durationMs: number
+  }
 }
 
 /**
@@ -71,4 +83,7 @@ export interface TaskListItem {
   status: TaskStatus
   type: string
   command: string
+  agentType?: string
+  startTime: number
+  endTime?: number
 }

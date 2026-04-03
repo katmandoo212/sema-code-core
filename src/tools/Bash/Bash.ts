@@ -285,7 +285,7 @@ export const BashTool = {
 
       // ③ 超时接管标记（code === -1）
       if (result.code === -1 && bgTaskId) {
-        const msg = `Command timed out after ${formatDuration(effectiveTimeout)}, moved to background. Task ID: ${bgTaskId}. Output: ${bgFilepath}`
+        const msg = `Command timed out after ${formatDuration(effectiveTimeout)}, moved to background.\nTask ID: ${bgTaskId}.\nOutput: ${bgFilepath}`
         const data: Out = {
           stdout: msg,
           stdoutLines: 1,

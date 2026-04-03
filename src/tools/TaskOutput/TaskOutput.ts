@@ -25,6 +25,7 @@ type Out = {
   taskId: string
   retrievalStatus: string
   taskStatus: string
+  taskType: string
   output: string
 }
 
@@ -53,7 +54,7 @@ export const TaskOutputTool = {
   genResultForAssistant(data: Out): string {
     return `<retrieval_status>${data.retrievalStatus}</retrieval_status>
 <task_id>${data.taskId}</task_id>
-<task_type>local_bash</task_type>
+<task_type>${data.taskType}</task_type>
 <status>${data.taskStatus}</status>
 <output>
 ${data.output}
@@ -64,7 +65,7 @@ ${data.output}
     const record = manager.getTask(task_id)
 
     if (!record) {
-      const data: Out = { taskId: task_id, retrievalStatus: 'not_found', taskStatus: 'not_found', output: '' }
+      const data: Out = { taskId: task_id, retrievalStatus: 'not_found', taskStatus: 'not_found', taskType: '', output: '' }
       yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
       return
     }
@@ -72,7 +73,7 @@ ${data.output}
     // block=false 或任务已完成，直接返回当前快照
     if (!block || record.status !== 'running') {
       const output = truncateOutput(record.output)
-      const data: Out = { taskId: task_id, retrievalStatus: record.status, taskStatus: record.status, output }
+      const data: Out = { taskId: task_id, retrievalStatus: record.status, taskStatus: record.status, taskType: record.type, output }
       yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
       return
     }
@@ -97,7 +98,7 @@ ${data.output}
     const interrupted = abortSignal?.aborted ?? false
     const output = truncateOutput(finalRecord.output)
     const retrievalStatus = interrupted ? 'not_ready' : (finalRecord.status === 'running' ? 'timeout' : 'completed')
-    const data: Out = { taskId: task_id, retrievalStatus, taskStatus: finalRecord.status, output }
+    const data: Out = { taskId: task_id, retrievalStatus, taskStatus: finalRecord.status, taskType: finalRecord.type, output }
     yield { type: 'result', data, resultForAssistant: this.genResultForAssistant(data) }
   },
 } satisfies Tool<In, Out>

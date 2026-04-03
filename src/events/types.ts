@@ -40,6 +40,7 @@ export interface EventBusInterface {
  * 事件: `session:ready`
  */
 export interface SessionReadyData {
+  pid: number;                  // Core进程ID
   workingDir: string;           // 工作目录路径
   sessionId: string;            // 会话唯一标识
   historyLoaded: boolean;       // 是否加载了历史记录
@@ -400,7 +401,7 @@ export interface TaskAgentEndData {
 // ==================== 后台任务相关事件 ====================
 
 /** 后台任务状态 */
-export type TaskStatus = 'running' | 'completed' | 'failed' | 'stopped';
+export type TaskStatus = 'running' | 'completed' | 'failed' | 'killed';
 
 /**
  * 后台任务启动事件数据
@@ -413,6 +414,7 @@ export interface TaskStartData {
   filepath: string;
   status: TaskStatus;
   type: 'Bash' | 'Agent';
+  agentType?: string;           // Agent任务专用：子代理类型（对应 subagent_type）
 }
 
 /**
@@ -421,7 +423,7 @@ export interface TaskStartData {
  */
 export interface TaskEndData {
   taskId: string;
-  status: 'completed' | 'failed' | 'stopped';
+  status: 'completed' | 'failed' | 'killed';
   summary: string;
 }
 

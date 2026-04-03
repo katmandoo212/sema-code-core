@@ -163,6 +163,7 @@ export class SemaCore {
   getTaskList = (): TaskListItem[] => getTaskManager().getTaskList();
   watchTask = (taskId: string, onDelta: (delta: string) => void): () => void => getTaskManager().watchTask(taskId, onDelta);
   stopTask = (taskId: string): boolean => getTaskManager().stopTask(taskId);
+  stopAllTasks = (): number => getTaskManager().stopAllTasks();
 
   // ==================== 资源管理 ====================
   dispose = async () => {
