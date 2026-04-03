@@ -122,7 +122,13 @@ export async function* query(
           details: {}
         }
       })
-      agentState.finalizeMessages([...messages, assistantMessage])
+      // 关键修复：不保存包含不完整工具调用的assistantMessage
+      // 而是添加一个系统消息说明截断情况，避免破坏消息历史的完整性
+      const truncationNotice = createUserMessage([{
+        type: 'text',
+        text: '<system-reminder>Previous assistant response was truncated due to max_tokens limit while generating tool calls. The incomplete tool calls have been discarded. Please try again with a more concise approach or adjust the output token limit.</system-reminder>'
+      }])
+      agentState.finalizeMessages([...messages, truncationNotice])
       return
     } else {
       logWarn('[Truncation] 模型输出被截断 (max_tokens)，纯文本输出，作为正常响应处理')
