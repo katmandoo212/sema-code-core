@@ -37,6 +37,12 @@ export interface TaskRecord {
   _pollTimer?: ReturnType<typeof setInterval>
   /** Agent 任务专用：独立的 AbortController，用于停止后台 agent */
   _abortController?: AbortController
+  /** 是否为前台任务（前台 Agent 注册时为 true，转后台时改为 false） */
+  foreground?: boolean
+  /** 前台转后台的 resolve 回调，调用后 Promise.race 立刻返回 */
+  _transferResolve?: () => void
+  /** 解除子 AC 与主 AC 的联动，转后台时调用 */
+  _unlinkAbort?: () => void
   /** Agent 任务专用：执行 Promise */
   _promise?: Promise<void>
   /** Agent 任务专用：子代理类型（对应 subagent_type） */
@@ -84,6 +90,7 @@ export interface TaskListItem {
   type: string
   command: string
   agentType?: string
+  foreground?: boolean
   startTime: number
   endTime?: number
 }

@@ -181,8 +181,11 @@ export const BashTool = {
   ) {
     const abortController = agentContext.abortController
 
-    // ① run_in_background=true → 直接 spawn 独立进程
-    if (run_in_background) {
+    // 子代理不支持后台执行，强制前台
+    const isSubAgent = agentContext.agentId !== MAIN_AGENT_ID
+
+    // ① run_in_background=true → 直接 spawn 独立进程（仅主代理）
+    if (run_in_background && !isSubAgent) {
       try {
         const { taskId, filepath } = getTaskManager().spawnBashTask(
           command,
@@ -260,10 +263,10 @@ export const BashTool = {
       getEventBus().emit('tool:execution:chunk', chunkData)
     } : undefined
 
-    // ② 超时接管回调
+    // ② 超时接管回调（子代理不接管，超时直接 kill）
     let bgTaskId: string | undefined
     let bgFilepath: string | undefined
-    const onTimeout = (ctx: TimeoutTransferContext) => {
+    const onTimeout = isSubAgent ? undefined : (ctx: TimeoutTransferContext) => {
       const result = getTaskManager().takeoverTask(
         ctx,
         command,

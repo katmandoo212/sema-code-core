@@ -175,10 +175,11 @@ export async function* query(
 
   const toolResults: UserMessage[] = [] // 存储工具执行结果
 
-  // 检查所有工具是否都可以并发运行（只读工具）
-  const canRunConcurrently = toolUseMessages.every(msg =>
-    tools.find(t => t.name === msg.name)?.isReadOnly?.() ?? false,
-  )
+  // 检查所有工具是否都可以并发运行（只读工具，或明确标记可并发的工具）
+  const canRunConcurrently = toolUseMessages.every(msg => {
+    const tool = tools.find(t => t.name === msg.name)
+    return tool?.isReadOnly?.() || tool?.canRunConcurrently?.() || false
+  })
 
   // 根据是否可以并发运行选择不同的执行策略
   if (canRunConcurrently) {

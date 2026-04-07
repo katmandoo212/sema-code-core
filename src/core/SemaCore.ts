@@ -164,6 +164,8 @@ export class SemaCore {
   watchTask = (taskId: string, onDelta: (delta: string) => void): () => void => getTaskManager().watchTask(taskId, onDelta);
   stopTask = (taskId: string): boolean => getTaskManager().stopTask(taskId);
   stopAllTasks = (): number => getTaskManager().stopAllTasks();
+  transferAgentToBackground = (taskId: string): boolean => getTaskManager().transferToBackground(taskId);
+  transferAllForegroundAgents = (): string[] => getTaskManager().transferAllForeground();
 
   // ==================== 资源管理 ====================
   dispose = async () => {

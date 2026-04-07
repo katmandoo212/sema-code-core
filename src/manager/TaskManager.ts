@@ -28,17 +28,20 @@ export class TaskManager {
   }
 
   getTaskList(): TaskListItem[] {
-    return Array.from(this.tasks.values()).map(t => ({
-      taskId: t.taskId,
-      pid: t.pid,
-      filepath: t.filepath,
-      status: t.status,
-      type: t.type,
-      command: t.command,
-      agentType: t.agentType,
-      startTime: t.startTime,
-      endTime: t.endTime,
-    }))
+    return Array.from(this.tasks.values())
+      .filter(t => !t.foreground)
+      .map(t => ({
+        taskId: t.taskId,
+        pid: t.pid,
+        filepath: t.filepath,
+        status: t.status,
+        type: t.type,
+        command: t.command,
+        agentType: t.agentType,
+        foreground: t.foreground,
+        startTime: t.startTime,
+        endTime: t.endTime,
+      }))
   }
 
   getRunningTasks(): TaskRecord[] {
@@ -283,6 +286,114 @@ export class TaskManager {
   }
 
   /**
+   * 注册前台 Agent 任务（不启动独立执行，仅创建 record 用于转后台）
+   */
+  registerForegroundAgent(
+    taskId: string,
+    description: string,
+    toolUseId: string,
+    abortController: AbortController,
+    unlinkAbort: () => void,
+    agentType?: string,
+  ): void {
+    ensureTaskDir()
+    const filepath = path.join(TASK_OUTPUT_DIR, `${taskId}.output`)
+    fs.writeFileSync(filepath, '')
+
+    const record: TaskRecord = {
+      taskId,
+      type: 'Agent',
+      command: description,
+      toolUseId,
+      filepath,
+      status: 'running',
+      output: '',
+      foreground: true,
+      _abortController: abortController,
+      _unlinkAbort: unlinkAbort,
+      startTime: Date.now(),
+      agentType,
+    }
+    this.tasks.set(taskId, record)
+    logInfo(`[TaskManager] registerForegroundAgent taskId=${taskId} description=${description}`)
+  }
+
+  /**
+   * 设置前台 agent 的转后台 resolve 回调
+   */
+  setTransferResolve(taskId: string, resolve: () => void): void {
+    const record = this.tasks.get(taskId)
+    if (record) {
+      record._transferResolve = resolve
+    }
+  }
+
+  /**
+   * 将指定前台 agent 转为后台运行
+   * 1. 解除子AC与主AC的联动
+   * 2. resolve transferSignal，让 Agent.ts 的 Promise.race 立刻返回
+   * 3. 标记 foreground=false
+   */
+  transferToBackground(taskId: string): boolean {
+    const record = this.tasks.get(taskId)
+    if (!record || !record.foreground || record.status !== 'running') {
+      return false
+    }
+
+    // 解除与主AC的联动
+    if (record._unlinkAbort) {
+      record._unlinkAbort()
+      record._unlinkAbort = undefined
+    }
+
+    // 标记为后台
+    record.foreground = false
+
+    // 触发 transferSignal，让 Promise.race 立刻返回
+    if (record._transferResolve) {
+      record._transferResolve()
+      record._transferResolve = undefined
+    }
+
+    logInfo(`[TaskManager] transferToBackground taskId=${taskId}`)
+    getEventBus().emit('task:transfer', { taskId, from: 'foreground', to: 'background' })
+
+    return true
+  }
+
+  /**
+   * 将所有前台 agent 转为后台
+   * @returns 被转的 taskId 列表
+   */
+  transferAllForeground(): string[] {
+    const transferred: string[] = []
+    for (const record of this.tasks.values()) {
+      if (record.foreground && record.status === 'running') {
+        if (this.transferToBackground(record.taskId)) {
+          transferred.push(record.taskId)
+        }
+      }
+    }
+    return transferred
+  }
+
+  /**
+   * 完结 Agent 任务记录（供 Agent.ts 在前台/转后台完成时调用）
+   */
+  finalizeTask(
+    taskId: string,
+    exitCode: number,
+    output?: string,
+    usage?: { totalTokens: number; toolUses: number; durationMs: number },
+  ): void {
+    const record = this.tasks.get(taskId)
+    if (!record || record.status !== 'running') return
+    if (output !== undefined) record.output = output
+    if (usage) record.usage = usage
+    this._finishTask(record, exitCode)
+  }
+
+  /**
    * 为后台 Agent 创建任务记录并异步执行
    * @param taskId 复用 Agent.ts 已生成的 taskId
    * @param description 任务描述（用于通知摘要）
@@ -401,8 +512,8 @@ export class TaskManager {
       summary: this._formatTaskSummary(record, 'killed'),
     })
 
-    // Agent 被中止时也发送 task-notification（与正常完成一致，status 为 killed）
-    if (record.type === 'Agent') {
+    // Agent 被中止时也发送 task-notification（前台任务除外，其结果由 Agent.ts yield 返回）
+    if (record.type === 'Agent' && !record.foreground) {
       this._notify(record)
     }
 
@@ -537,7 +648,11 @@ export class TaskManager {
       summary: this._formatTaskSummary(record, record.status),
     })
 
-    this._notify(record)
+    // 前台任务正常完成，不需要 notify（结果由 Agent.ts yield 返回）
+    // 只有后台任务（包括转后台的）才 notify
+    if (!record.foreground) {
+      this._notify(record)
+    }
     this._pruneFinishedTasks()
   }
 

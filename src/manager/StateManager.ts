@@ -88,6 +88,9 @@ export class StateManager {
   private planModeInfoSent = false;
   public currentAbortController: AbortController | null = null;
 
+  // 当前正在运行的前台 agent taskId 集合
+  private foregroundAgents = new Set<string>();
+
   private constructor() {
     // 私有构造函数，确保单例模式
   }
@@ -315,6 +318,26 @@ export class StateManager {
     return this.getAgentState(agentId).currentState;
   }
 
+  // ============================================================
+  // 前台 Agent 管理（共享状态）
+  // ============================================================
+
+  addForegroundAgent(taskId: string): void {
+    this.foregroundAgents.add(taskId);
+  }
+
+  removeForegroundAgent(taskId: string): void {
+    this.foregroundAgents.delete(taskId);
+  }
+
+  getForegroundAgentIds(): string[] {
+    return Array.from(this.foregroundAgents);
+  }
+
+  clearForegroundAgents(): void {
+    this.foregroundAgents.clear();
+  }
+
   /**
    * 清空所有状态数据
    */
@@ -329,6 +352,7 @@ export class StateManager {
     this.currentAbortController = null;
     this.globalEditPermissionGranted = false;
     this.planModeInfoSent = false;
+    this.foregroundAgents.clear();
 
     logInfo(`所有状态数据已清空`);
   }

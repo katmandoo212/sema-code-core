@@ -427,6 +427,17 @@ export interface TaskEndData {
   summary: string;
 }
 
+/**
+ * 前台任务转后台事件数据
+ * 事件: `task:transfer`
+ * 说明: 前台 Agent 通过 transferToBackground() 转为后台运行时触发
+ */
+export interface TaskTransferData {
+  taskId: string;
+  from: 'foreground';
+  to: 'background';
+}
+
 // ==================== mcp状态相关事件 ====================
 
 import type { MCPServerInfo } from '../types/mcp';
