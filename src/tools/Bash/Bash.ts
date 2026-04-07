@@ -9,6 +9,7 @@ import { getTaskManager } from '../../manager/TaskManager'
 import { getCwd, getOriginalCwd } from '../../util/cwd'
 import { processHeredocCommand } from '../../util/format'
 import { DESCRIPTION, TOOL_NAME_FOR_PROMPT, MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS } from './prompt'
+import { getConfManager } from '../../manager/ConfManager'
 import { formatOutput, STDOUT_HEAD_TAIL_LINES, STDERR_HEAD_TAIL_LINES } from './utils'
 import { getEventBus } from '../../events/EventSystem'
 import type { ToolExecutionChunkData } from '../../events/types'
@@ -183,9 +184,10 @@ export const BashTool = {
 
     // 子代理不支持后台执行，强制前台
     const isSubAgent = agentContext.agentId !== MAIN_AGENT_ID
+    const disableBackground = getConfManager().getCoreConfig()?.disableBackgroundTasks ?? false
 
-    // ① run_in_background=true → 直接 spawn 独立进程（仅主代理）
-    if (run_in_background && !isSubAgent) {
+    // ① run_in_background=true → 直接 spawn 独立进程（仅主代理，且未禁用后台任务）
+    if (run_in_background && !isSubAgent && !disableBackground) {
       try {
         const { taskId, filepath } = getTaskManager().spawnBashTask(
           command,
@@ -263,10 +265,10 @@ export const BashTool = {
       getEventBus().emit('tool:execution:chunk', chunkData)
     } : undefined
 
-    // ② 超时接管回调（子代理不接管，超时直接 kill）
+    // ② 超时接管回调（子代理不接管，超时直接 kill；禁用后台任务时同样直接 kill）
     let bgTaskId: string | undefined
     let bgFilepath: string | undefined
-    const onTimeout = isSubAgent ? undefined : (ctx: TimeoutTransferContext) => {
+    const onTimeout = (isSubAgent || disableBackground) ? undefined : (ctx: TimeoutTransferContext) => {
       const result = getTaskManager().takeoverTask(
         ctx,
         command,

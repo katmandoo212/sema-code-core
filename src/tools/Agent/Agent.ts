@@ -21,6 +21,7 @@ import { calculateStats, formatSummary, extractResultText } from '../../util/age
 import { buildAgentSystemPrompt } from '../../services/agents/genSystemPrompt'
 import { generateRulesReminders, generateSkillsReminder } from '../../services/agents/systemReminder'
 import { getTaskManager } from '../../manager/TaskManager'
+import { getConfManager } from '../../manager/ConfManager'
 
 const inputSchema = z.strictObject({
   description: z.string().describe('A short (3-5 word) description of the task'),
@@ -124,8 +125,10 @@ export const TaskTool = {
         { type: 'text' as const, text: prompt }
       ])
 
-      // 6. 后台模式：独立 AbortController，立即返回
-      if (run_in_background) {
+      const disableBackground = getConfManager().getCoreConfig()?.disableBackgroundTasks ?? false
+
+      // 6. 后台模式：独立 AbortController，立即返回（禁用后台任务时跳过）
+      if (run_in_background && !disableBackground) {
         const taskManager = getTaskManager()
         const toolUseId = agentContext?.currentToolUseID || ''
         const agentModel: 'quick' | 'main' = (agentConfig.model === 'quick' || agentConfig.model === 'haiku') ? 'quick' : 'main'
@@ -277,12 +280,14 @@ export const TaskTool = {
         }
       })()
 
-      // 12. Promise.race：等执行完成 or 等转后台信号
+      // 12. Promise.race：等执行完成 or 等转后台信号（禁用后台任务时不注册转后台）
       let transferResolve: (() => void) | null = null
       const transferSignal = new Promise<void>(resolve => {
         transferResolve = resolve
       })
-      taskManager.setTransferResolve(taskId, transferResolve!)
+      if (!disableBackground) {
+        taskManager.setTransferResolve(taskId, transferResolve!)
+      }
 
       // 创建统一处理 resolve/reject 的派生 Promise
       const completionPromise = executionPromise.then(

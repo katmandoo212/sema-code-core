@@ -84,7 +84,8 @@ export class ConfigManager {
       'skipSkillPermission',
       'skipMCPToolPermission',
       'enableLLMCache',
-      'enableClaudeCodeCompat'
+      'enableClaudeCodeCompat',
+      'disableBackgroundTasks'
     ];
 
     if (!allowedKeys.includes(key)) {
