@@ -20,6 +20,7 @@ import type { AgentContext } from '../types/agent'
 import { getStateManager, MAIN_AGENT_ID, PendingUserInput } from '../manager/StateManager';
 import { handleCommand } from '../services/commands/runCommand';
 import { getTaskManager } from '../manager/TaskManager';
+import { handleBtw } from './btw';
 
 
 /**
@@ -145,6 +146,18 @@ export class SemaEngine {
     const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
     const inputId = crypto.randomUUID().replace(/-/g, '').substring(0, 8)
     const trimmedInput = input.trim()
+
+    // BTW 旁路：不影响状态和队列，异步处理后直接返回
+    if (trimmedInput === '/btw' || trimmedInput.startsWith('/btw ')) {
+      const question = trimmedInput.startsWith('/btw ') ? trimmedInput.slice(5).trim() : ''
+      getConfManager().saveUserInputToHistory(originalInput || trimmedInput)
+      if (question) {
+        handleBtw(question).catch(err => logWarn(`[btw] 未捕获异常: ${err instanceof Error ? err.message : String(err)}`))
+      } else {
+        this.emit('btw:response', { question: '', content: '' })
+      }
+      return
+    }
 
     if (mainAgentState.getCurrentState() === 'processing') {
       const type: PendingUserInput['type'] = trimmedInput.startsWith('/') ? 'command' : 'inject'

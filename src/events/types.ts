@@ -438,6 +438,18 @@ export interface TaskTransferData {
   to: 'background';
 }
 
+// ==================== BTW 旁路问答事件 ====================
+
+/**
+ * BTW 旁路回答事件数据
+ * 事件: `btw:response`
+ * 说明: 用户通过 /btw 命令发起的旁路问题，不影响主对话状态
+ */
+export interface BtwResponseData {
+  question: string;   // 用户问题
+  content: string;    // 回答内容
+}
+
 // ==================== mcp状态相关事件 ====================
 
 import type { MCPServerInfo } from '../types/mcp';
