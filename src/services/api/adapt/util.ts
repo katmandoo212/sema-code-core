@@ -48,10 +48,9 @@ export function emitChunkEvent(
   eventBus: any,
   type: 'text' | 'thinking',
   id: string,
-  content: string,
   delta: string
 ) {
-  const chunkData: ThinkingChunkData | TextChunkData = { id, content, delta }
+  const chunkData: ThinkingChunkData | TextChunkData = { id, delta }
   const eventName = type === 'thinking' ? 'message:thinking:chunk' : 'message:text:chunk'
   eventBus.emit(eventName, chunkData)
 }

@@ -15,10 +15,11 @@ export interface SemaCoreConfig {
   agentMode?: 'Agent' | 'Plan' ;     // 默认 'Agent'
   disableTopicDetection?: boolean;   // 是否禁用话题检测，默认 否
   enableClaudeCodeCompat?: boolean;   // 是否兼容ClaudeCode生态，默认 是
+  disableBackgroundTasks?: boolean;  // 是否禁止后台任务（Bash后台/Agent后台/超时转后台），默认 否
 }
 
 // 支持动态更新的核心配置字段
-export type UpdatableCoreConfigKeys = 'stream' | 'thinking' | 'systemPrompt' | 'customRules' | 'skipFileEditPermission' | 'skipBashExecPermission' | 'skipSkillPermission' | 'skipMCPToolPermission' | 'skipWebFetchPermission' | 'enableLLMCache' | 'enableClaudeCodeCompat';
+export type UpdatableCoreConfigKeys = 'stream' | 'thinking' | 'systemPrompt' | 'customRules' | 'skipFileEditPermission' | 'skipBashExecPermission' | 'skipSkillPermission' | 'skipMCPToolPermission' | 'skipWebFetchPermission' | 'enableLLMCache' | 'enableClaudeCodeCompat' | 'disableBackgroundTasks';
 
 // 默认核心配置
 export const defaultCoreConfig = {
@@ -32,7 +33,8 @@ export const defaultCoreConfig = {
   systemPrompt: "You are Sema, AIRC's Agent AI for coding.",
   customRules: "- 中文回答",
   enableLLMCache: false,
-  enableClaudeCodeCompat: true
+  enableClaudeCodeCompat: true,
+  disableBackgroundTasks: false,
 };
 
 // 可更新的核心配置类型（基于默认配置）
@@ -155,3 +157,11 @@ export type {
   RuleScope,
   RuleConfig
 } from './rule';
+
+// 导出 Task 相关类型
+export type {
+  TaskStatus,
+  TaskRecord,
+  TaskListItem
+} from './task';
+

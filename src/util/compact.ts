@@ -270,7 +270,7 @@ async function calculateThresholds(tokenCount: number) {
  * 采用主模型上下文限制作为判断基准，因为压缩任务需要性能足够的模型处理
  * 只计算输入token数，因为API调用时主要关心的是输入token限制
  */
-async function shouldAutoCompact(messages: Message[]): Promise<boolean> {
+export async function shouldAutoCompact(messages: Message[]): Promise<boolean> {
   if (messages.length < 3) return false
 
   // 只计算输入token数，这是API调用的主要限制
@@ -355,20 +355,13 @@ export async function compactMessages(
  * 这样可以保证：
  * 1. 压缩后的消息列表以用户消息结尾，LLM 调用不会失败
  * 2. tool_use / tool_result 的配对关系不被破坏
+ *
+ * 执行自动压缩（调用前应先通过 shouldAutoCompact 判断是否需要压缩）
  */
-export async function checkAutoCompact(
+export async function autoCompact(
   messages: Message[],
   abortController: AbortController
-): Promise<{ messages: Message[]; wasCompacted: boolean }> {
-  if (messages.length < 3) {
-    return { messages, wasCompacted: false }
-  }
-
-  // 基于全部消息的 token 数判断是否需要压缩
-  if (!(await shouldAutoCompact(messages))) {
-    return { messages, wasCompacted: false }
-  }
-
+): Promise<Message[]> {
   // 从后往前找最后一条真实用户消息（非 tool_result）的索引
   let lastRealUserIdx = -1
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -386,7 +379,7 @@ export async function checkAutoCompact(
 
   if (lastRealUserIdx === -1) {
     // 没有找到真实用户消息，跳过压缩
-    return { messages, wasCompacted: false }
+    return messages
   }
 
   // 只压缩最后一条真实用户消息之前的历史
@@ -396,7 +389,7 @@ export async function checkAutoCompact(
 
   if (messagesToCompact.length < 2) {
     // 历史消息太少，不值得压缩
-    return { messages, wasCompacted: false }
+    return messages
   }
 
   try {
@@ -411,13 +404,10 @@ export async function checkAutoCompact(
 
     logDebug(`[Compact] Final messages count: ${finalMessages.length}, kept current turn: ${messagesToKeep.length} messages`)
 
-    return {
-      messages: finalMessages,
-      wasCompacted: true,
-    }
+    return finalMessages
   } catch (error) {
     logError(`Auto-compact failed completely: ${error}. Continuing with original messages`)
-    return { messages, wasCompacted: false }
+    return messages
   }
 }
 

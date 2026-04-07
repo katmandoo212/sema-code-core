@@ -40,6 +40,7 @@ export interface EventBusInterface {
  * 事件: `session:ready`
  */
 export interface SessionReadyData {
+  pid: number;                  // Core进程ID
   workingDir: string;           // 工作目录路径
   sessionId: string;            // 会话唯一标识
   historyLoaded: boolean;       // 是否加载了历史记录
@@ -136,7 +137,6 @@ export interface InputProcessingData {
  */
 export interface ThinkingChunkData {
   id: string;      // 消息唯一ID，对应 Anthropic Message 的 id
-  content: string;
   delta: string;
 }
 
@@ -146,7 +146,6 @@ export interface ThinkingChunkData {
  */
 export interface TextChunkData {
   id: string;      // 消息唯一ID，对应 Anthropic Message 的 id
-  content: string;
   delta: string;
 }
 
@@ -163,7 +162,6 @@ export interface MessageCompleteData {
   /** 工具调用列表（hasToolCalls为true时存在） */
   toolCalls?: Array<{
     name: string;                  // 工具名称
-    args: Record<string, any>;     // 工具参数
   }>;
 }
 
@@ -175,6 +173,7 @@ export interface MessageCompleteData {
  */
 export interface ToolPermissionRequestData {
   agentId: string;       // 代理ID（主代理为 MAIN_AGENT_ID，子代理为 taskId）
+  toolId: string;        // 工具调用唯一ID（对应 Anthropic ToolUseBlock 的 id），用于精确匹配响应
   toolName: string;                  // 工具名称
   title: string;                     // 工具执行标题
   content: string | Record<string, any>;  // 权限说明文字（字符串或JSON对象）
@@ -198,7 +197,7 @@ export interface ToolExecutionCompleteData {
 /**
  * 工具执行中间态事件数据
  * 事件: `tool:execution:chunk`
- * 说明: 命令执行期间，工具结果的中间态（结构与 ToolExecutionCompleteData 相同）
+ * 说明: 命令执行期间，工具结果的中间态（结构与 ToolExecutionCompleteData 相同， content只传delta）
  */
 export type ToolExecutionChunkData = ToolExecutionCompleteData
 
@@ -220,6 +219,7 @@ export interface ToolExecutionErrorData {
  * 用于向Core返回用户的权限选择
  */
 export interface ToolPermissionResponse {
+  toolId: string;        // 工具调用唯一ID，与请求中的 toolId 对应，用于精确匹配
   toolName: string;      // 工具名称
   selected: string;      // 用户选择的操作标识，如 'agree' | 'allow' | 'refuse' 或其他自定义选项
 }
@@ -384,6 +384,7 @@ export interface TaskAgentStartData {
   subagent_type: string;    // 子代理类型
   description: string;      // 任务描述
   prompt: string;           // 任务提示
+  run_in_background: boolean; // 是否后台运行
 }
 
 /**
@@ -396,6 +397,46 @@ export interface TaskAgentEndData {
   content: string;          // 结果描述，如 'Interrupted' 或 'Done(12 tools use · 12.1k tokens · 2m 14s)'
 }
 
+
+// ==================== 后台任务相关事件 ====================
+
+/** 后台任务状态 */
+export type TaskStatus = 'running' | 'completed' | 'failed' | 'killed';
+
+/**
+ * 后台任务启动事件数据
+ * 事件: `task:start`
+ */
+export interface TaskStartData {
+  taskId: string;
+  pid?: number;
+  command: string;
+  filepath: string;
+  status: TaskStatus;
+  type: 'Bash' | 'Agent';
+  agentType?: string;           // Agent任务专用：子代理类型（对应 subagent_type）
+}
+
+/**
+ * 后台任务结束事件数据
+ * 事件: `task:end`
+ */
+export interface TaskEndData {
+  taskId: string;
+  status: 'completed' | 'failed' | 'killed';
+  summary: string;
+}
+
+/**
+ * 前台任务转后台事件数据
+ * 事件: `task:transfer`
+ * 说明: 前台 Agent 通过 transferToBackground() 转为后台运行时触发
+ */
+export interface TaskTransferData {
+  taskId: string;
+  from: 'foreground';
+  to: 'background';
+}
 
 // ==================== mcp状态相关事件 ====================
 

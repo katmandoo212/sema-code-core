@@ -174,7 +174,7 @@ export const NotebookEditTool = {
     if (!readTimestamp) {
       return {
         result: false,
-        message: 'File has not been read yet. Read it first before writing to it.',
+        message: 'File must be read first',
       }
     }
     const lastWriteTime = statSync(fullPath).mtimeMs

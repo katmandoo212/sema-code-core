@@ -4,11 +4,13 @@ import { z } from 'zod'
 import { Tool, ValidationResult } from '../base/Tool'
 import { splitCommand } from '../../util/commands'
 import { isInDirectory } from '../../util/file'
-import { PersistentShell } from '../../util/shell'
+import { PersistentShell, formatDuration, type TimeoutTransferContext } from '../../util/shell'
+import { getTaskManager } from '../../manager/TaskManager'
 import { getCwd, getOriginalCwd } from '../../util/cwd'
 import { processHeredocCommand } from '../../util/format'
 import { DESCRIPTION, TOOL_NAME_FOR_PROMPT, MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS } from './prompt'
-import { formatOutput } from './utils'
+import { getConfManager } from '../../manager/ConfManager'
+import { formatOutput, STDOUT_HEAD_TAIL_LINES, STDERR_HEAD_TAIL_LINES } from './utils'
 import { getEventBus } from '../../events/EventSystem'
 import type { ToolExecutionChunkData } from '../../events/types'
 import { MAIN_AGENT_ID } from '../../manager/StateManager'
@@ -50,7 +52,7 @@ export const inputSchema = z.strictObject({
     .number()
     .optional()
     .describe(`Optional timeout in milliseconds (max ${MAX_TIMEOUT_MS})`),
-  description: z.string().describe(`Clear, concise description of what this command does in 5-10 words, in active voice. Examples:
+  description: z.string().optional().describe(`Clear, concise description of what this command does in 5-10 words, in active voice. Examples:
 Input: ls
 Output: List files in current directory
 
@@ -61,7 +63,11 @@ Input: npm install
 Output: Install package dependencies
 
 Input: mkdir foo
-Output: Create directory 'foo'`)
+Output: Create directory 'foo'`),
+  run_in_background: z
+    .boolean()
+    .optional()
+    .describe(`Set to true to run this command in the background. Use TaskOutput to read the output later.`),
 })
 
 type In = typeof inputSchema
@@ -124,18 +130,18 @@ export const BashTool = {
     const title = getTitle(input)
     return {
       title,
-      content: input.description 
+      content: input.description || ''
     }
   },
   genToolResultMessage({ stdout, stderr, interrupted, command }) {
     let result = ''
 
     if (stdout !== '') {
-      result += formatOutput(stdout.trim()).truncatedContent + '\n'
+      result += formatOutput(stdout.trim(), STDOUT_HEAD_TAIL_LINES).truncatedContent + '\n'
     }
 
     if (stderr !== '') {
-      result += formatOutput(stderr.trim()).truncatedContent + '\n'
+      result += formatOutput(stderr.trim(), STDERR_HEAD_TAIL_LINES).truncatedContent + '\n'
     }
 
     if (stdout === '' && stderr === '') {
@@ -154,19 +160,16 @@ export const BashTool = {
     return getTitle(input)
   },
   genResultForAssistant({ interrupted, stdout, stderr }): string {
-    const headTailLines = 500
     const { truncatedContent: stdoutContent } = stdout.trim()
-      ? formatOutput(stdout.trim(), headTailLines)
+      ? formatOutput(stdout.trim(), STDOUT_HEAD_TAIL_LINES)
       : { truncatedContent: '' }
     const { truncatedContent: stderrContent } = stderr.trim()
-      ? formatOutput(stderr.trim(), headTailLines)
+      ? formatOutput(stderr.trim(), STDERR_HEAD_TAIL_LINES)
       : { truncatedContent: '' }
 
     if (interrupted) {
-      const errorMsg = stderrContent
-      return stdoutContent
-        ? `${errorMsg}\n${INTERRUPT_MESSAGE_FOR_TOOL_USE}\n${stdoutContent}`
-        : `${errorMsg}`
+      const parts = [stdoutContent, INTERRUPT_MESSAGE_FOR_TOOL_USE, stderrContent].filter(Boolean)
+      return parts.join('\n')
     }
 
     const hasBoth = stdoutContent && stderrContent
@@ -174,12 +177,50 @@ export const BashTool = {
     return result || '(no content)'
   },
   async *call(
-    { command, timeout = DEFAULT_TIMEOUT_MS },
+    { command, timeout = DEFAULT_TIMEOUT_MS, run_in_background },
     agentContext: any,
   ) {
+    const abortController = agentContext.abortController
+
+    // 子代理不支持后台执行，强制前台
+    const isSubAgent = agentContext.agentId !== MAIN_AGENT_ID
+    const disableBackground = getConfManager().getCoreConfig()?.disableBackgroundTasks ?? false
+
+    // ① run_in_background=true → 直接 spawn 独立进程（仅主代理，且未禁用后台任务）
+    if (run_in_background && !isSubAgent && !disableBackground) {
+      try {
+        const { taskId, filepath } = getTaskManager().spawnBashTask(
+          command,
+          agentContext.currentToolUseID || '',
+          agentContext,
+        )
+        const msg = `Command running in background. Task ID: ${taskId}. Output: ${filepath}`
+        const data: Out = {
+          stdout: msg,
+          stdoutLines: 1,
+          stderr: '',
+          stderrLines: 0,
+          interrupted: false,
+          command,
+        }
+        yield { type: 'result', data, resultForAssistant: msg }
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error)
+        const data: Out = {
+          stdout: '',
+          stdoutLines: 0,
+          stderr: errMsg,
+          stderrLines: 1,
+          interrupted: false,
+          command,
+        }
+        yield { type: 'result', data, resultForAssistant: errMsg }
+      }
+      return
+    }
+
     let stdout = ''
     let stderr = ''
-    const abortController = agentContext.abortController
 
     if (abortController?.signal.aborted) {
       const data: Out = {
@@ -210,8 +251,8 @@ export const BashTool = {
     const isMainAgent = agentContext.agentId === MAIN_AGENT_ID
     const onChunk = isMainAgent ? (chunkStdout: string, chunkStderr: string) => {
       let content = ''
-      if (chunkStdout.trim()) content += formatOutput(chunkStdout.trim()).truncatedContent
-      if (chunkStderr.trim()) content += (content ? '\n' : '') + formatOutput(chunkStderr.trim()).truncatedContent
+      if (chunkStdout.trim()) content += formatOutput(chunkStdout.trim(), undefined, { resolveCR: false }).truncatedContent
+      if (chunkStderr.trim()) content += (content ? '\n' : '') + formatOutput(chunkStderr.trim(), undefined, { resolveCR: false }).truncatedContent
 
       const chunkData: ToolExecutionChunkData = {
         agentId: agentContext.agentId,
@@ -224,13 +265,44 @@ export const BashTool = {
       getEventBus().emit('tool:execution:chunk', chunkData)
     } : undefined
 
+    // ② 超时接管回调（子代理不接管，超时直接 kill；禁用后台任务时同样直接 kill）
+    let bgTaskId: string | undefined
+    let bgFilepath: string | undefined
+    const onTimeout = (isSubAgent || disableBackground) ? undefined : (ctx: TimeoutTransferContext) => {
+      const result = getTaskManager().takeoverTask(
+        ctx,
+        command,
+        agentContext.currentToolUseID || '',
+        agentContext,
+      )
+      bgTaskId = result.taskId
+      bgFilepath = result.filepath
+    }
+
     try {
       const result = await PersistentShell.getInstance().exec(
         command,
         abortController?.signal,
         effectiveTimeout,
         onChunk,
+        onTimeout,
       )
+
+      // ③ 超时接管标记（code === -1）
+      if (result.code === -1 && bgTaskId) {
+        const msg = `Command timed out after ${formatDuration(effectiveTimeout)}, moved to background.\nTask ID: ${bgTaskId}.\nOutput: ${bgFilepath}`
+        const data: Out = {
+          stdout: msg,
+          stdoutLines: 1,
+          stderr: '',
+          stderrLines: 0,
+          interrupted: false,
+          command,
+        }
+        yield { type: 'result', data, resultForAssistant: msg }
+        return
+      }
+
       stdout += (result.stdout || '').trim() + EOL
       if (result.code !== 0) {
         stderr += `Exit code ${result.code}` + EOL

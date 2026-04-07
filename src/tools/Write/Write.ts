@@ -133,7 +133,7 @@ export const FileWriteTool = {
       return {
         result: false,
         message:
-          'File has not been read yet. Read it first before writing to it.',
+          'File must be read first',
       }
     }
 

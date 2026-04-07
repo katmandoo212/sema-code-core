@@ -24,6 +24,7 @@ type Output = {
   name: string
   description: string
   systemPrompt: string  // skill 自身的系统提示（skillConfig.prompt 原文）
+  filePath?: string
 }
 
 export const SkillTool = {
@@ -68,9 +69,9 @@ export const SkillTool = {
       content: skillConfig.prompt,
     }
   },
-  genToolResultMessage({ name, description, systemPrompt }: Output) {
+  genToolResultMessage({ name, description, systemPrompt, filePath }: Output) {
     const title = name
-    const summary = `Skill "${name}" loaded successfully`
+    const summary = filePath ?? `Skill "${name}" loaded successfully`
 
     const preview = systemPrompt.length > 8000
       ? systemPrompt.substring(0, 8000) + '...'
@@ -112,6 +113,7 @@ export const SkillTool = {
       name: skillConfig.name,
       description: skillConfig.description,
       systemPrompt: skillConfig.prompt,
+      filePath: skillConfig.filePath,
     }
 
     yield {

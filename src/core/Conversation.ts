@@ -8,12 +8,13 @@ import {
   createUserMessage,
 } from '../util/message'
 import { logDebug, logWarn, logInfo } from '../util/log'
-import { checkAutoCompact } from '../util/compact'
+import { shouldAutoCompact, autoCompact } from '../util/compact'
 import { MessageCompleteData } from '../events/types'
 import { getTokens } from '../util/tokens'
 import { INTERRUPT_MESSAGE, INTERRUPT_MESSAGE_FOR_TOOL_USE } from '../constants/message'
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager'
 import { getEventBus } from '../events/EventSystem'
+import { getTaskManager } from '../manager/TaskManager'
 import { getTools } from '../tools/base/tools'
 import { getMCPManager } from '../services/mcp/MCPManager'
 import { getConfManager } from '../manager/ConfManager'
@@ -45,25 +46,13 @@ export async function* query(
 
   // 自动压缩检查（子代理不进行压缩）
   // 在处理新消息前检查，如果需要压缩，会分离出最新的用户消息
-  if (!isSubagent) {
-    const { messages: processedMessages, wasCompacted } = await checkAutoCompact(messages, abortController)
-    if (wasCompacted) {
-      logDebug(`[Compact] Before: ${messages.length} messages, After: ${processedMessages.length} messages`)
-      logDebug(`[Compact] Compacted messages structure: ${JSON.stringify(processedMessages.map(m => ({
-        type: m.type,
-        role: m.message.role,
-        contentType: Array.isArray(m.message.content)
-          ? m.message.content.map((c: any) => c.type)
-          : typeof m.message.content
-      })), null, 2)}`)
-      messages = processedMessages
-      // 压缩后清空 todos 和 readFileTimestamps（历史上下文已丢失，它们不再有意义）
-      agentState.updateTodosIntelligently([]);
-      agentState.setReadFileTimestamps({});
-    }
+  if (!isSubagent && await shouldAutoCompact(messages)) {
+    getTaskManager().dispose();
+    messages = await autoCompact(messages, abortController)
+    agentState.updateTodosIntelligently([]);
+    agentState.setReadFileTimestamps({});
   }
 
-  // 获取助手响应
   // 获取助手响应
   let assistantMessage: AssistantMessage
   try {
@@ -170,7 +159,6 @@ export async function* query(
     toolCalls: toolUseMessages.map(tool => {
       return {
         name: tool.name,
-        args: tool.input as Record<string, any>
       }
     })
   }
@@ -194,10 +182,11 @@ export async function* query(
 
   const toolResults: UserMessage[] = [] // 存储工具执行结果
 
-  // 检查所有工具是否都可以并发运行（只读工具）
-  const canRunConcurrently = toolUseMessages.every(msg =>
-    tools.find(t => t.name === msg.name)?.isReadOnly?.() ?? false,
-  )
+  // 检查所有工具是否都可以并发运行（只读工具，或明确标记可并发的工具）
+  const canRunConcurrently = toolUseMessages.every(msg => {
+    const tool = tools.find(t => t.name === msg.name)
+    return tool?.isReadOnly?.() || tool?.canRunConcurrently?.() || false
+  })
 
   // 根据是否可以并发运行选择不同的执行策略
   if (canRunConcurrently) {

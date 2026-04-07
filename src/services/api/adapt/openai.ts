@@ -92,7 +92,7 @@ async function streamChat(
         }
         accumulatedContent += delta.content;
         if (eventBus) {
-          emitChunkEvent(eventBus, 'text', messageId, accumulatedContent, delta.content);
+          emitChunkEvent(eventBus, 'text', messageId, delta.content);
         }
       }
 
@@ -100,7 +100,7 @@ async function streamChat(
       if ("reasoning_content" in delta && delta.reasoning_content) {
         accumulatedReasoning += delta.reasoning_content as string;
         if (eventBus) {
-          emitChunkEvent(eventBus, 'thinking', messageId, accumulatedReasoning, delta.reasoning_content as string);
+          emitChunkEvent(eventBus, 'thinking', messageId, delta.reasoning_content as string);
         }
       }
 

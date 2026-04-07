@@ -247,6 +247,7 @@ export async function* checkPermissionsAndCallTool(
       abortController,
       assistantMessage,
       agentContext.agentId,
+      toolUseID,
     )
     if (!permissionResult.result) {
       // 权限被拒绝，返回拒绝消息

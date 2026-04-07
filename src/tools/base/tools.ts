@@ -12,6 +12,8 @@ import { SkillTool } from '../Skill/Skill'
 import { TaskTool } from '../Agent/Agent'
 import { AskUserQuestionTool } from '../AskUserQuestion/AskUserQuestion'
 import { ExitPlanModeTool } from '../ExitPlanMode/ExitPlanMode'
+import { TaskOutputTool } from '../TaskOutput/TaskOutput'
+import { TaskStopTool } from '../TaskStop/TaskStop'
 import { WebFetchTool } from '../WebFetch/WebFetch'
 import { getConfManager } from '../../manager/ConfManager'
 import { zodToJsonSchema } from 'zod-to-json-schema'
@@ -44,7 +46,6 @@ export const getBuiltinTools = (): Tool[] => {
     NotebookEditTool as unknown as Tool,
     AskUserQuestionTool as unknown as Tool,
     ExitPlanModeTool as unknown as Tool,
-    WebFetchTool as unknown as Tool
   ]
 }
 
@@ -88,17 +89,26 @@ function extractRequiredFields(schema: any): string[] {
   return []
 }
 
+const BG_TOOLS = new Set(['Bash', 'Agent'])
+
 // 使用 memoize 优化的 buildTools 函数
 export const buildTools = memoize(
   (tools: Tool[]): Anthropic.Tool[] => {
+    const disableBackgroundTasks = getConfManager().getCoreConfig()?.disableBackgroundTasks ?? false
     return tools.map(tool => {
       const jsonSchema = zodToJsonSchema(tool.inputSchema as any);
       const requiredFields = extractRequiredFields(tool.inputSchema);
 
       // 安全地获取 properties
-      const properties = (jsonSchema && typeof jsonSchema === 'object' && 'properties' in jsonSchema)
-        ? jsonSchema.properties
+      let properties = (jsonSchema && typeof jsonSchema === 'object' && 'properties' in jsonSchema)
+        ? { ...(jsonSchema.properties as Record<string, unknown>) }
         : jsonSchema
+
+      // 禁用后台任务时，从 Bash/Agent 的 schema 中过滤 run_in_background
+      if (disableBackgroundTasks && BG_TOOLS.has(tool.name) && properties && typeof properties === 'object') {
+        const { run_in_background: _, ...rest } = properties as Record<string, unknown>
+        properties = rest
+      }
 
       return {
         name: tool.name,
@@ -111,7 +121,10 @@ export const buildTools = memoize(
       }
     })
   },
-  (tools: Tool[]) => tools.map(tool => tool.name).sort().join(',')
+  (tools: Tool[]) => {
+    const disableBackgroundTasks = getConfManager().getCoreConfig()?.disableBackgroundTasks ?? false
+    return tools.map(tool => tool.name).sort().join(',') + (disableBackgroundTasks ? ':no-bg' : '')
+  }
 )
 
 // 辅助函数：获取工具描述

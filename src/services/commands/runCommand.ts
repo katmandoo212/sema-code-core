@@ -8,6 +8,7 @@ import { isInterruptedException } from '../../types/errors';
 import { getCommandsManager } from './commandsManager';
 import { createUserMessage } from '../../util/message';
 import { getTokens } from '../../util/tokens';
+import { getTaskManager } from '../../manager/TaskManager';
 
 interface CustomCommandResult {
   processedText: string;
@@ -63,6 +64,9 @@ async function handleSystemCommand(input: string): Promise<SystemCommandHandleRe
 async function handleClearCommand(_argsStr?: string): Promise<void> {
   logInfo('执行清空命令...');
 
+  // 关闭所有后台进程
+  getTaskManager().dispose();
+
   const eventBus = EventBus.getInstance();
   const stateManager = getStateManager();
   const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
@@ -82,6 +86,9 @@ async function handleClearCommand(_argsStr?: string): Promise<void> {
 
 async function handleCompactCommand(): Promise<void> {
   logInfo('执行压缩命令...');
+
+  // 关闭所有后台进程
+  getTaskManager().dispose();
 
   const eventBus = EventBus.getInstance();
   const stateManager = getStateManager();

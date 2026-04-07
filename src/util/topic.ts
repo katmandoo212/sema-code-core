@@ -1,6 +1,8 @@
 import { memoize } from 'lodash-es'
 import { queryQuick } from '../services/api/queryLLM'
 import { API_ERROR_MESSAGE_PREFIX } from '../constants/message'
+import { isInterruptedException } from '../types/errors'
+import { logDebug } from './log'
 
 export type TopicResult = {
   isNewTopic: boolean
@@ -67,3 +69,46 @@ export const getTopicFromUserInput = memoize(
   },
   userInput => userInput, // 仅按用户输入进行memoize
 )
+
+/**
+ * 后台异步检测话题，不阻塞主流程
+ * @param userInput 用户输入
+ * @param mainAbortController 主会话的 AbortController（可选，用于联动中断）
+ * @param onTopic 检测到话题后的回调
+ */
+export async function detectTopicInBackground(
+  userInput: string,
+  mainAbortController: AbortController | null,
+  onTopic: (result: TopicResult) => void,
+): Promise<void> {
+  // 创建独立的 AbortController 用于话题检测
+  const topicAbortController = new AbortController()
+
+  // 如果主会话被中断，也中断话题检测
+  let abortListener: (() => void) | null = null
+  if (mainAbortController) {
+    abortListener = () => {
+      topicAbortController.abort()
+    }
+    mainAbortController.signal.addEventListener('abort', abortListener, { once: true })
+  }
+
+  try {
+    const topicResult = await getTopicFromUserInput(userInput, topicAbortController.signal)
+
+    if (topicResult) {
+      logDebug(`话题检测结果: ${JSON.stringify(topicResult)}`)
+      onTopic(topicResult)
+    }
+  } catch (error) {
+    // 话题检测失败不影响主流程，只记录调试日志
+    if (!isInterruptedException(error)) {
+      logDebug(`话题检测失败: ${error}`)
+    }
+  } finally {
+    // 清理监听器（防止内存泄漏）
+    if (abortListener && mainAbortController) {
+      mainAbortController.signal.removeEventListener('abort', abortListener)
+    }
+  }
+}

@@ -42,6 +42,9 @@ export interface Tool<
 
   getDisplayTitle?: (input?: z.infer<TInput>) => string
 
+  // 工具虽非只读，但多个实例之间互相独立，可并发执行
+  canRunConcurrently?: () => boolean
+
   // 工具是否支持中断并返回部分结果（如 Bash）
   // 实现此方法且返回 true 的工具，在执行被中断时会保留 genResultForAssistant 的结果
   // 不实现此方法的工具，中断时返回标准取消消息

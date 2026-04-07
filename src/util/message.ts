@@ -7,6 +7,9 @@ import {
   CANCEL_MESSAGE,
   REJECT_MESSAGE
 } from '../constants/message'
+import { generateRulesReminders, generateSkillsReminder } from '../services/agents/systemReminder'
+import { generatePlanReminders } from '../services/agents/genSystemPrompt'
+import { getStateManager } from '../manager/StateManager'
 
 
 
@@ -97,6 +100,39 @@ export function createUserMessage(
   return m
 }
 
+
+/**
+ * 构建 additionalReminders：文件引用、首次查询、Plan 模式信息、skill信息
+ */
+export function buildAdditionalReminders(
+  systemReminders: Anthropic.ContentBlockParam[],
+  messageHistory: Message[],
+  agentMode: 'Agent' | 'Plan',
+  hasSkillTool: boolean = false,
+): Anthropic.ContentBlockParam[] {
+  // 文件引用 每次输入均添加
+  const reminders = [...systemReminders]
+
+  // 判断是否为首次查询（消息历史为空），添加首次查询的额外信息 skills\rules
+  if (messageHistory.length === 0) {
+    // 添加 skills 信息（仅当工具集中包含 Skill 工具时）
+    if (hasSkillTool) {
+      reminders.push(...generateSkillsReminder())
+    }
+
+    // 添加 rules 信息
+    reminders.push(...generateRulesReminders())
+  }
+
+  // 判断是否为首次 Plan 模式查询，添加 Plan 模式信息
+  const stateManager = getStateManager()
+  if (agentMode === 'Plan' && !stateManager.isPlanModeInfoSent()) {
+    reminders.push(...generatePlanReminders())
+    stateManager.markPlanModeInfoSent()
+  }
+
+  return reminders
+}
 
 // 处理消息规范化：删除空assistant消息，合并连续user消息，处理空tool_use
 export function normalizeMessagesForAPI(

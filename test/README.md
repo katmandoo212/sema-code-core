@@ -43,3 +43,11 @@ node test/plugins/marketplace.test.js
 ```
 node test/agent/agent.test.js
 ```
+
+
+任务管理：
+
+```
+node test/task/bashTask.test.js
+```
+

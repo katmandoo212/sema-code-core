@@ -45,6 +45,12 @@ For .doc files on Linux/Mac:
   soffice --headless --convert-to txt your_file.doc
   Note: Requires LibreOffice`
 
+/** 获取用于显示的路径：项目内文件用相对路径，项目外文件用绝对路径 */
+const getDisplayPath = (filePath: string) => {
+  const rel = relative(getCwd(), filePath)
+  return rel.startsWith('..') ? filePath : rel
+}
+
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
 const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = {
   '.png': 'image/png',
@@ -90,10 +96,10 @@ export const FileReadTool = {
   genToolResultMessage(data) {
     // 处理图片文件
     if (data.type === 'image') {
-      const relativePath = relative(getCwd(), data.image.filePath)
+      const displayPath = getDisplayPath(data.image.filePath)
       return {
-        title: relativePath,
-        summary: `Read image ${relativePath}`,
+        title: displayPath,
+        summary: `Read image ${displayPath}`,
         content: '',
       }
     }
@@ -102,9 +108,10 @@ export const FileReadTool = {
     if (data.type === 'notebook') {
       const { filePath, cellCount } = data.notebook
       const cellText = cellCount === 1 ? 'cell' : 'cells'
+      const displayPath = getDisplayPath(filePath)
       return {
-        title: relative(getCwd(), filePath),
-        summary: `Read ${relative(getCwd(), filePath)} with ${cellCount} ${cellText}`,
+        title: displayPath,
+        summary: `Read ${displayPath} with ${cellCount} ${cellText}`,
         content: ''
       }
     }
@@ -144,7 +151,7 @@ export const FileReadTool = {
     }
 
     const lineText = numLines === 1 ? 'line' : 'lines'
-    const relativePath = relative(getCwd(), filePath)
+    const relativePath = getDisplayPath(filePath)
 
     // 部分读取时，标题显示行号范围
     const isPartialRead = startLine > 1 || numLines < totalLines
