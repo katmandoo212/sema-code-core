@@ -1,5 +1,6 @@
 import { relative, extname } from 'node:path'
 import * as fs from 'node:fs'
+import { readFile as readFileAsync } from 'node:fs/promises'
 import { z } from 'zod'
 import { Tool } from '../base/Tool'
 import {
@@ -16,10 +17,21 @@ import { readNotebook, formatNotebookCells } from '../../util/notebook'
 import { NotebookCellData } from '../../types/notebook'
 import { logDebug, logWarn, logInfo } from '../../util/log'
 import { compressImage } from '../../util/imageCompress'
+import {
+  readPDF,
+  extractPDFPages,
+  getPDFPageCount,
+  parsePDFPageRange,
+  isPDFExtension,
+  isPDFSupported,
+  PDF_AT_MENTION_INLINE_THRESHOLD,
+  PDF_MAX_PAGES_PER_READ,
+  PDF_EXTRACT_SIZE_THRESHOLD,
+} from '../../util/pdf'
+import { formatSize as formatFileSize } from '../../util/format'
 
 const MAX_LINES_TO_RENDER = 5
 const MAX_OUTPUT_SIZE = 2 * 1024 * 1024 // 2MB in bytes
-export const PDF_NOT_SUPPORTED_MESSAGE = 'PDF files are not supported for direct reading. Please use the Bash tool with pdftotext command to read content page by page.'
 export const DOC_NOT_SUPPORTED_MESSAGE = `DOC/DOCX files are not supported for direct reading. Please use the Bash tool to extract text content:
 
 For .docx files (recommended):
@@ -58,6 +70,12 @@ const inputSchema = z.strictObject({
     .describe(
       'The number of lines to read. Only provide if the file is too large to read at once.',
     ),
+  pages: z
+    .string()
+    .optional()
+    .describe(
+      'Page range for PDF files (e.g., "1-5", "3", "10-20"). Only applicable to PDF files. Maximum 20 pages per request.',
+    ),
 })
 
 export const FileReadTool = {
@@ -91,6 +109,29 @@ export const FileReadTool = {
       }
     }
 
+    // 处理 PDF 文件
+    if (data.type === 'pdf') {
+      const relativePath = relative(getCwd(), data.pdf.filePath)
+      return {
+        title: relativePath,
+        summary: `Read PDF ${relativePath} (${formatFileSize(data.pdf.originalSize)})`,
+        content: '',
+      }
+    }
+
+    // 处理 PDF 提取页面
+    if (data.type === 'pdf_parts') {
+      const relativePath = relative(getCwd(), data.pdfParts.filePath)
+      const contentPreview = data.pdfParts.textContent
+        ? data.pdfParts.textContent.split('\n').slice(0, 3).join('\n')
+        : ''
+      return {
+        title: relativePath,
+        summary: `Read ${data.pdfParts.count} pages from PDF ${relativePath}`,
+        content: contentPreview ? contentPreview + '\n...' : '',
+      }
+    }
+
     // 处理普通文本文件
     const { filePath, content, numLines, startLine, totalLines } = data.file
     const contentWithFallback = content || '(No content)'
@@ -118,7 +159,28 @@ export const FileReadTool = {
       content: preview
     }
   },
-  async validateInput({ file_path, offset, limit }, agentContext: any) {
+  async validateInput({ file_path, offset, limit, pages }, agentContext: any) {
+    // 验证 pages 参数 (纯字符串解析,无 I/O)
+    if (pages !== undefined) {
+      const parsed = parsePDFPageRange(pages)
+      if (!parsed) {
+        return {
+          result: false,
+          message: `Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`,
+        }
+      }
+      const rangeSize =
+        parsed.lastPage === Infinity
+          ? PDF_MAX_PAGES_PER_READ + 1
+          : parsed.lastPage - parsed.firstPage + 1
+      if (rangeSize > PDF_MAX_PAGES_PER_READ) {
+        return {
+          result: false,
+          message: `Page range "${pages}" exceeds maximum of ${PDF_MAX_PAGES_PER_READ} pages per request. Please use a smaller range.`,
+        }
+      }
+    }
+
     const fullFilePath = normalizeFilePath(file_path)
 
     // Use secure file service to check if file exists and get file info
@@ -159,14 +221,6 @@ export const FileReadTool = {
     const stats = fileCheck.stats!
     const fileSize = stats.size
 
-    // PDF files should be read via Bash tool with pdftotext
-    if (extname(fullFilePath).toLowerCase() === '.pdf') {
-      return {
-        result: false,
-        message: PDF_NOT_SUPPORTED_MESSAGE,
-      }
-    }
-
     // DOC/DOCX files should be read via Bash tool
     const lowerExtForDoc = extname(fullFilePath).toLowerCase()
     if (lowerExtForDoc === '.doc' || lowerExtForDoc === '.docx') {
@@ -176,9 +230,10 @@ export const FileReadTool = {
       }
     }
 
-    // If file is too large and no offset/limit provided (skip check for images)
+    // If file is too large and no offset/limit provided (skip check for images and PDFs)
     const isImageFile = IMAGE_EXTENSIONS.has(extname(fullFilePath).toLowerCase())
-    if (!isImageFile && fileSize > MAX_OUTPUT_SIZE && !offset && !limit) {
+    const isPDFFile = isPDFExtension(extname(fullFilePath))
+    if (!isImageFile && !isPDFFile && fileSize > MAX_OUTPUT_SIZE && !offset && !limit) {
       return {
         result: false,
         message: formatFileSizeError(fileSize),
@@ -189,7 +244,7 @@ export const FileReadTool = {
     return { result: true }
   },
   async *call(
-    { file_path, offset = 1, limit = MAX_LINES_TO_READ },
+    { file_path, offset = 1, limit = MAX_LINES_TO_READ, pages },
     agentContext: any,
   ) {
     const fullFilePath = normalizeFilePath(file_path)
@@ -202,14 +257,105 @@ export const FileReadTool = {
     // 检测是否为 notebook 文件
     const fileExtension = extname(fullFilePath)
 
-    // PDF files are not supported for direct reading
-    if (fileExtension.toLowerCase() === '.pdf') {
-      throw new Error(PDF_NOT_SUPPORTED_MESSAGE)
-    }
-
     // DOC/DOCX files are not supported for direct reading
     if (fileExtension.toLowerCase() === '.doc' || fileExtension.toLowerCase() === '.docx') {
       throw new Error(DOC_NOT_SUPPORTED_MESSAGE)
+    }
+
+    // --- PDF ---
+    if (isPDFExtension(fileExtension)) {
+      if (pages) {
+        const parsedRange = parsePDFPageRange(pages)
+        const extractResult = await extractPDFPages(
+          fullFilePath,
+          parsedRange ?? undefined,
+        )
+        if (!extractResult.success) {
+          throw new Error(extractResult.error.message)
+        }
+
+        // 读取提取的图像文件
+        const path = require('path')
+        const fs = require('fs/promises')
+        const entries = await fs.readdir(extractResult.data.file.outputDir)
+        const imageFiles = entries.filter((f: string) => f.endsWith('.jpg')).sort()
+
+        // 检查是否有文本文件 (Python 提取方案)
+        const textFile = path.join(extractResult.data.file.outputDir, 'content.txt')
+        let textContent: string | undefined
+        try {
+          textContent = await fs.readFile(textFile, 'utf-8')
+        } catch {
+          // 没有文本文件,说明是图像提取方案
+        }
+
+        const data = {
+          type: 'pdf_parts' as const,
+          pdfParts: {
+            filePath: file_path,
+            originalSize: extractResult.data.file.originalSize,
+            count: extractResult.data.file.count,
+            outputDir: extractResult.data.file.outputDir,
+            imageFiles,
+            textContent,
+          },
+        }
+
+        yield {
+          type: 'result',
+          data,
+          resultForAssistant: this.genResultForAssistant(data),
+        }
+        return
+      }
+
+      const pageCount = await getPDFPageCount(fullFilePath)
+      if (pageCount !== null && pageCount > PDF_AT_MENTION_INLINE_THRESHOLD) {
+        throw new Error(
+          `This PDF has ${pageCount} pages, which is too many to read at once. ` +
+            `Use the pages parameter to read specific page ranges (e.g., pages: "1-5"). ` +
+            `Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
+        )
+      }
+
+      const stats = fs.statSync(fullFilePath)
+      const shouldExtractPages =
+        !isPDFSupported() || stats.size > PDF_EXTRACT_SIZE_THRESHOLD
+
+      if (shouldExtractPages) {
+        const extractResult = await extractPDFPages(fullFilePath)
+        if (extractResult.success) {
+          logInfo(`PDF page extraction succeeded: ${extractResult.data.file.count} pages`)
+        } else {
+          logWarn(`PDF page extraction failed: ${extractResult.error.message}`)
+        }
+      }
+
+      if (!isPDFSupported()) {
+        throw new Error(
+          'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
+            `or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum ${PDF_MAX_PAGES_PER_READ} pages per request). ` +
+            'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
+        )
+      }
+
+      const readResult = await readPDF(fullFilePath)
+      if (!readResult.success) {
+        throw new Error(readResult.error.message)
+      }
+
+      const pdfData = readResult.data
+      const data = {
+        type: 'pdf' as const,
+        pdf: pdfData.file,
+      }
+
+      yield {
+        type: 'result',
+        data,
+        resultForAssistant: this.genResultForAssistant(data),
+      }
+      return
     }
 
     // 检测是否为图片文件
@@ -332,6 +478,36 @@ export const FileReadTool = {
       return formatNotebookCells(data.notebook.cells)
     }
 
+    // 处理 PDF 文件 (完整 PDF)
+    // 注意:由于类型限制,这里返回 PDF 元数据作为文本
+    if (data.type === 'pdf') {
+      return `PDF file read: ${data.pdf.filePath} (${formatFileSize(data.pdf.originalSize)})\nBase64 data: ${data.pdf.base64.substring(0, 100)}...`
+    }
+
+    // 处理 PDF 提取页面 (图像或文本)
+    if (data.type === 'pdf_parts') {
+      // 如果有文本内容,返回文本
+      if (data.pdfParts.textContent) {
+        return data.pdfParts.textContent
+      }
+
+      // 否则返回图像
+      const path = require('path')
+      const fs = require('fs')
+      return data.pdfParts.imageFiles.map(f => {
+        const imgPath = path.join(data.pdfParts.outputDir, f)
+        const imgBuffer = fs.readFileSync(imgPath)
+        return {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: 'image/jpeg' as const,
+            data: imgBuffer.toString('base64'),
+          },
+        }
+      })
+    }
+
     // 处理普通文本文件
     return addLineNumbers(data.file)
   },
@@ -361,6 +537,25 @@ export const FileReadTool = {
         filePath: string
         data: string
         media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      }
+    }
+  | {
+      type: 'pdf'
+      pdf: {
+        filePath: string
+        base64: string
+        originalSize: number
+      }
+    }
+  | {
+      type: 'pdf_parts'
+      pdfParts: {
+        filePath: string
+        originalSize: number
+        count: number
+        outputDir: string
+        imageFiles: string[]
+        textContent?: string
       }
     }
 >

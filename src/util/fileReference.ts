@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { normalizeFilePath } from './file'
 import { logWarn, logInfo } from './log'
 import { MAX_LINES_TO_READ } from '../tools/Read/prompt'
-import { PDF_NOT_SUPPORTED_MESSAGE, DOC_NOT_SUPPORTED_MESSAGE } from '../tools/Read/Read'
+import { DOC_NOT_SUPPORTED_MESSAGE } from '../tools/Read/Read'
 import { FileReferenceInfo } from '../types/index'
 import { getCwd } from './cwd'
 import * as fs from 'fs'
@@ -182,9 +182,9 @@ async function processSingleReference(
     if (path.extname(fullPath).toLowerCase() === '.pdf') {
       systemReminders.push({
         type: 'text' as const,
-        text: `<system-reminder>\n${PDF_NOT_SUPPORTED_MESSAGE}\n</system-reminder>`
+        text: `<system-reminder>\nPDF files can be read directly using the Read tool with optional page ranges (e.g., pages: "1-5"). Maximum 20 pages per request.\n</system-reminder>`
       })
-      return { systemReminders, supplementaryInfo }
+      // 不再直接返回,让 Read 工具处理 PDF
     }
 
     // 检查是否为 DOC/DOCX 文件

@@ -58,3 +58,16 @@ export function formatError(error: unknown): string {
   const end = fullMessage.slice(-halfLength) // 结尾部分
   return `${start}\n\n... [${fullMessage.length - 10000} characters truncated] ...\n\n${end}`
 }
+
+/**
+ * 格式化文件大小为人类可读的格式
+ * @param bytes 字节数
+ * @returns 格式化后的文件大小字符串
+ */
+export function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
