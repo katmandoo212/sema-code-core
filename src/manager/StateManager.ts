@@ -16,6 +16,15 @@ export interface TodoItemWithId extends TodoItem {
   id?: string;
 }
 
+// 待处理用户输入项
+export interface PendingUserInput {
+  inputId: string;
+  input: string;
+  originalInput?: string;
+  silent?: boolean;
+  type: 'inject' | 'command'; // inject=普通文本，command=以/开头的命令
+}
+
 // 代理状态接口
 interface AgentState {
   currentState: SessionState;
@@ -90,6 +99,9 @@ export class StateManager {
 
   // 当前正在运行的前台 agent taskId 集合
   private foregroundAgents = new Set<string>();
+
+  // 待处理用户输入队列（共享状态）
+  private pendingUserInputs: PendingUserInput[] = [];
 
   private constructor() {
     // 私有构造函数，确保单例模式
@@ -338,6 +350,53 @@ export class StateManager {
     this.foregroundAgents.clear();
   }
 
+  // ============================================================
+  // 待处理用户输入队列管理（共享状态）
+  // ============================================================
+
+  /**
+   * 添加待处理输入到队列末尾
+   */
+  addPendingUserInput(item: PendingUserInput): void {
+    this.pendingUserInputs.push(item);
+  }
+
+  /**
+   * 获取待处理输入队列长度
+   */
+  getPendingUserInputsLength(): number {
+    return this.pendingUserInputs.length;
+  }
+
+  /**
+   * 从队头连续取 inject 类型，遇到 command 停止
+   * 取出的从队列移除，command 及之后保留
+   */
+  consumeInjectInputsBeforeNextCommand(): PendingUserInput[] {
+    const result: PendingUserInput[] = [];
+    while (
+      this.pendingUserInputs.length > 0 &&
+      this.pendingUserInputs[0].type === 'inject'
+    ) {
+      result.push(this.pendingUserInputs.shift()!);
+    }
+    return result;
+  }
+
+  /**
+   * 消费全部剩余输入并清空队列
+   */
+  consumeAllPendingInputs(): PendingUserInput[] {
+    return this.pendingUserInputs.splice(0);
+  }
+
+  /**
+   * 清空待处理输入队列
+   */
+  clearPendingUserInputs(): void {
+    this.pendingUserInputs = [];
+  }
+
   /**
    * 清空所有状态数据
    */
@@ -353,6 +412,7 @@ export class StateManager {
     this.globalEditPermissionGranted = false;
     this.planModeInfoSent = false;
     this.foregroundAgents.clear();
+    this.clearPendingUserInputs();
 
     logInfo(`所有状态数据已清空`);
   }
