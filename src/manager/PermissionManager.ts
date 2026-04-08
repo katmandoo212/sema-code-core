@@ -179,7 +179,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
       }
     }
 
-    return requestPermissionViaEvent(tool, input, null, abortController, agentId)
+    return requestPermissionViaEvent(tool, input, null, abortController, agentId, toolId)
   }
 
   logDebug(`[Permission]${tool.name} 非编辑、bash、skill、mcp或webfetch工具默认允许`)
