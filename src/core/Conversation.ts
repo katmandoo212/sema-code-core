@@ -21,6 +21,7 @@ import { getConfManager } from '../manager/ConfManager'
 import { formatSystemPrompt } from '../services/agents/genSystemPrompt'
 import { generateRulesReminders, generateSkillsReminder } from '../services/agents/systemReminder'
 import { runToolsConcurrently, runToolsSerially } from './RunTools'
+import { processFileReferences } from '../util/fileReference'
 
 
 /**
@@ -253,6 +254,11 @@ export async function* query(
     return aIndex - bIndex
   })
 
+  // 注入待处理用户消息（仅主代理，有工具结果时）
+  if (!isSubagent && orderedToolResults.length > 0) {
+    await injectPendingInputsIntoToolResult(orderedToolResults, agentContext)
+  }
+
   // 处理控制信号，工具执行后可能重建上下文和消息历史
   const {
     systemPromptContent: nextSystemPromptContent,
@@ -365,4 +371,56 @@ async function handleControlSignalRebuild(
     agentContext: newAgentContext,
     nextMessages,
   }
+}
+
+/**
+ * 将队列中待注入的用户消息追加到最后一条工具结果中
+ * 从队头连续取 inject 类型，遇到 command 停止
+ */
+export async function injectPendingInputsIntoToolResult(
+  orderedToolResults: UserMessage[],
+  agentContext: AgentContext,
+): Promise<void> {
+  const stateManager = getStateManager()
+  const injectItems = stateManager.consumeInjectInputsBeforeNextCommand()
+  if (injectItems.length === 0) return
+
+  const lastResult = orderedToolResults[orderedToolResults.length - 1]
+
+  for (const item of injectItems) {
+    // 非静默：发送 input:processing 事件 + 保存到项目输入历史
+    if (!item.silent) {
+      getEventBus().emit('input:processing', {
+        inputId: item.inputId,
+        input: item.input,
+        originalInput: item.originalInput,
+      })
+      getConfManager().saveUserInputToHistory(item.originalInput || item.input)
+    }
+
+    // 处理文件引用
+    const fileRefResult = await processFileReferences(item.input, agentContext)
+    if (fileRefResult.supplementaryInfo.length > 0) {
+      getEventBus().emit('file:reference', {
+        references: fileRefResult.supplementaryInfo,
+      })
+    }
+
+    // 构建注入文本（含文件引用 systemReminders）
+    const reminderTexts = fileRefResult.systemReminders
+      .filter((r: Anthropic.ContentBlockParam): r is Anthropic.TextBlock => r.type === 'text' && !!(r as any).text)
+      .map(r => r.text)
+      .join('\n')
+    const injectText = reminderTexts ? `${item.input}\n${reminderTexts}` : item.input
+
+    // 追加 system-reminder 到最后一条工具结果
+    if (Array.isArray(lastResult.message.content)) {
+      lastResult.message.content.push({
+        type: 'text',
+        text: `<system-reminder>\nThe user sent a new message while you were working:\n${injectText}\n\nIMPORTANT: After completing your current task, you MUST address the user's message above. Do not ignore it.\n</system-reminder>`,
+      })
+    }
+  }
+
+  logInfo(`[inject] 已注入 ${injectItems.length} 条用户消息`)
 }

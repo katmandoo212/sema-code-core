@@ -17,17 +17,16 @@ import { isInterruptedException } from '../types/errors';
 import type { Message } from '../types/message';
 import { query } from './Conversation';
 import type { AgentContext } from '../types/agent'
-import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager';
+import { getStateManager, MAIN_AGENT_ID, PendingUserInput } from '../manager/StateManager';
 import { handleCommand } from '../services/commands/runCommand';
 import { getTaskManager } from '../manager/TaskManager';
+import { handleBtw } from './btw';
 
 
 /**
  * Sema 引擎 - 处理核心业务逻辑
  */
 export class SemaEngine {
-  // 待处理的用户输入队列
-  private pendingInputs: Array<{ inputId: string; input: string; originalInput?: string; silent?: boolean }> = []
   // 待处理的会话ID（只保留最新的一个）
   private pendingSession: string | null = null
   // 当前正在执行的 processQuery Promise（用于等待旧会话结束）
@@ -90,7 +89,7 @@ export class SemaEngine {
 
     // 直接创建新会话，清空所有待处理状态
     this.abortCurrentRequest();
-    this.pendingInputs = [];  // 清空输入队列，因为这些输入属于旧会话
+    stateManager.clearPendingUserInputs();  // 清空输入队列，因为这些输入属于旧会话
     this.pendingSession = null;
 
     // 关闭所有后台进程
@@ -143,19 +142,35 @@ export class SemaEngine {
    * 如果当前正在处理中，将输入加入队列等待
    */
   processUserInput(input: string, originalInput?: string, silent?: boolean): void {
-    const mainAgentState = getStateManager().forAgent(MAIN_AGENT_ID);
+    const stateManager = getStateManager();
+    const mainAgentState = stateManager.forAgent(MAIN_AGENT_ID);
     const inputId = crypto.randomUUID().replace(/-/g, '').substring(0, 8)
+    const trimmedInput = input.trim()
+
+    // BTW 旁路：不影响状态和队列，异步处理后直接返回
+    if (trimmedInput === '/btw' || trimmedInput.startsWith('/btw ')) {
+      const question = trimmedInput.startsWith('/btw ') ? trimmedInput.slice(5).trim() : ''
+      getConfManager().saveUserInputToHistory(originalInput || trimmedInput)
+      if (question) {
+        handleBtw(question).catch(err => logWarn(`[btw] 未捕获异常: ${err instanceof Error ? err.message : String(err)}`))
+      } else {
+        this.emit('btw:response', { question: '', content: '' })
+      }
+      return
+    }
 
     if (mainAgentState.getCurrentState() === 'processing') {
-      this.pendingInputs.push({ inputId, input: input.trim(), originalInput, silent })
-      logInfo(`输入已入队，队列长度: ${this.pendingInputs.length}`)
+      const type: PendingUserInput['type'] = trimmedInput.startsWith('/') ? 'command' : 'inject'
+      stateManager.addPendingUserInput({ inputId, input: trimmedInput, originalInput, silent, type })
+      logInfo(`输入已入队(${type})，队列长度: ${stateManager.getPendingUserInputsLength()}`)
       if (!silent) {
         this.emit('input:received', {
           inputId,
-          input: input.trim(),
+          input: trimmedInput,
           originalInput,
           queued: true,
-          queueLength: this.pendingInputs.length,
+          inject: type === 'inject',
+          queueLength: stateManager.getPendingUserInputsLength(),
         })
       }
       return
@@ -164,13 +179,14 @@ export class SemaEngine {
     if (!silent) {
       this.emit('input:received', {
         inputId,
-        input: input.trim(),
+        input: trimmedInput,
         originalInput,
         queued: false,
+        inject: false,
         queueLength: 0,
       })
     }
-    this.startQuery([{ inputId, input: input.trim(), originalInput, silent }]);
+    this.startQuery([{ inputId, input: trimmedInput, originalInput, silent }]);
   }
 
   /**
@@ -355,7 +371,7 @@ export class SemaEngine {
       if (this.pendingSession) {
         const sessionId = this.pendingSession;
         this.pendingSession = null;
-        this.pendingInputs = []; // 清空输入队列，因为这些输入属于旧会话
+        stateManager.clearPendingUserInputs(); // 清空输入队列，因为这些输入属于旧会话
 
         logInfo(`检测到待处理会话，开始创建: ${sessionId}`);
         this.createSession(sessionId).catch(error => {
@@ -366,13 +382,23 @@ export class SemaEngine {
       }
 
       // 处理同一会话中的待处理输入队列
-      if (this.pendingInputs.length > 0) {
-        const pending = this.pendingInputs.splice(0)
+      const remaining = stateManager.consumeAllPendingInputs();
+      if (remaining.length > 0) {
+        // 转换为 takeNextBatch 所需格式
+        const pending = remaining.map(item => ({
+          inputId: item.inputId,
+          input: item.input,
+          originalInput: item.originalInput,
+          silent: item.silent,
+        }))
         const batch = takeNextBatch(pending)
 
         // 剩余的放回队列
         if (pending.length > 0) {
-          this.pendingInputs = [...pending, ...this.pendingInputs]
+          for (const item of pending) {
+            const type: PendingUserInput['type'] = item.input.startsWith('/') ? 'command' : 'inject'
+            stateManager.addPendingUserInput({ ...item, type })
+          }
         }
 
         logInfo(`处理队列中 ${batch.length} 条待处理输入`)
@@ -476,7 +502,7 @@ export class SemaEngine {
 
     // 1. 中止当前正在进行的请求并清空队列
     this.abortCurrentRequest();
-    this.pendingInputs = [];
+    getStateManager().clearPendingUserInputs();
     this.pendingSession = null;
 
     // 2. 清空所有状态数据
