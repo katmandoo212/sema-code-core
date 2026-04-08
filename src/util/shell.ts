@@ -748,9 +748,21 @@ export class PersistentShell {
           stdio: 'ignore',
           timeout: syntaxCheckTimeout,
         })
+      } else if (IS_WIN) {
+        // 在 Windows 上使用 spawn 方式直接调用 bash，避免 cmd.exe 对引号的错误解析
+        const { spawnSync } = require('child_process')
+        const result = spawnSync(this.binShell, ['-n', '-c', command], {
+          stdio: 'ignore',
+          timeout: syntaxCheckTimeout,
+          windowsHide: true,
+        })
+        // 检查是否有错误，统一抛出让 catch 处理
+        if (result.status !== 0 || result.error) {
+          throw result.error || new Error(`Syntax check failed with exit code ${result.status}`)
+        }
       } else {
-        const quotedBinShell = IS_WIN ? `"${this.binShell}"` : this.binShell
-        execSync(`${quotedBinShell} -n -c ${quotedCommand}`, {
+        // Unix 系统使用 execSync
+        execSync(`${this.binShell} -n -c ${quotedCommand}`, {
           stdio: 'ignore',
           timeout: syntaxCheckTimeout,
         })
