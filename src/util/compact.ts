@@ -416,7 +416,7 @@ export async function autoCompact(
  * 在某些场景下（如压缩），模型必须提供 tools 参数，但我们不希望模型调用任何工具
  * 此工具作为占位符，确保 API 调用合法但不会被实际使用
  */
-const NULL_TOOL: Tool = {
+export const NULL_TOOL: Tool = {
   name: 'null',
   description: '占位工具，不应被调用。仅用于满足 API 要求，实际场景中请勿使用此工具。',
   inputSchema: z.object({}),

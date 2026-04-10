@@ -1,9 +1,10 @@
 import { queryLLM } from '../services/api/queryLLM'
-import { normalizeMessagesForAPI, createUserMessage } from '../util/message'
+import { normalizeMessagesForAPI, createUserMessage } from './message'
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager'
 import { getEventBus } from '../events/EventSystem'
-import { logInfo, logDebug } from '../util/log'
+import { logInfo, logDebug } from './log'
 import { isInterruptedException } from '../types/errors'
+import { NULL_TOOL } from './compact'
 
 const BTW_SYSTEM_REMINDER = `<system-reminder>
 This is a side question from the user. You must answer this question directly in a single response.
@@ -41,8 +42,8 @@ export async function handleBtw(question: string): Promise<void> {
     text: `${BTW_SYSTEM_REMINDER}\n\n${question}`,
   }])
 
-  // 拼接消息：历史 + btw 问题
-  const messages = normalizeMessagesForAPI([...history, btwMessage])
+  // 拼接消息：先规范化历史（清洗空消息、合并连续user等），再追加 btw 问题
+  const messages = [...normalizeMessagesForAPI(history), btwMessage]
 
   // 创建独立的 AbortController，联动主会话中断
   const abortController = new AbortController()
@@ -60,7 +61,7 @@ export async function handleBtw(question: string): Promise<void> {
       messages,
       [],     // 无独立系统提示（靠 system-reminder 注入在消息中）
       abortController.signal,
-      [],     // 无工具
+      [NULL_TOOL], // 占位工具，避免历史含 tool 块时部分 provider 报错
       'quick', // 快速模型
       true,   // 禁用 chunk 事件
       true,   // 禁用错误事件
