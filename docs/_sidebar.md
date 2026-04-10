@@ -10,8 +10,12 @@
     - [Skill 使用](wiki/getting-started/basic-usage/skill-usage)
     - [SubAgent 使用](wiki/getting-started/basic-usage/subagent-usage)
     - [command 使用](wiki/getting-started/basic-usage/command-usage)
+    - [Plugin 使用](wiki/getting-started/basic-usage/plugin-usage)
+    - [Rule & Memory 使用](wiki/getting-started/basic-usage/rule-memory-usage)
+    - [后台任务使用](wiki/getting-started/basic-usage/background-task-usage)
 - **扩展应用**
   - [VSCode插件](wiki/scenarios/vscode-extension)
+  - [SemaClaw](wiki/scenarios/semaclaw)
   - [Code2Skill](wiki/scenarios/code2skill)
 - **核心概念**
   - Core 架构
@@ -31,17 +35,26 @@
       - [文件写入工具 Write](wiki/core-concepts/tool-system/built-in-tools/writetool)
       - [笔记本编辑工具 NotebookEdit](wiki/core-concepts/tool-system/built-in-tools/notebookedittool)
       - [规划工具 TodoWrite](wiki/core-concepts/tool-system/built-in-tools/todowritetool)
-      - [子代理工具 Task](wiki/core-concepts/tool-system/built-in-tools/tasktool)
+      - [子代理工具 Agent](wiki/core-concepts/tool-system/built-in-tools/tasktool)
       - [技能工具 Skill](wiki/core-concepts/tool-system/built-in-tools/skilltool)
       - [交互工具 AskUserQuestion](wiki/core-concepts/tool-system/built-in-tools/askuserquestiontool)
       - [退出Plan模式工具 ExitPlanMode](wiki/core-concepts/tool-system/built-in-tools/exitplanmodetool)
+      - [后台任务输出工具 TaskOutput](wiki/core-concepts/tool-system/built-in-tools/taskoutputtool)
+      - [后台任务停止工具 TaskStop](wiki/core-concepts/tool-system/built-in-tools/taskstoptool)
     - [权限系统](wiki/core-concepts/tool-system/permission-system)
     - [创建自定义工具](wiki/core-concepts/tool-system/creating-custom-tools)
+  - 后台任务
+    - [概述](wiki/core-concepts/task-management/overview)
+    - [Bash 后台任务](wiki/core-concepts/task-management/bash-task)
+    - [Agent 后台任务](wiki/core-concepts/task-management/agent-task)
   - 生态扩展
+    - [插件市场](wiki/core-concepts/advanced-topics/plugins)
+    - [Agent 子代理](wiki/core-concepts/advanced-topics/subagents)
     - [MCP 集成](wiki/core-concepts/advanced-topics/mcp-integration)
-    - [Plan 模式](wiki/core-concepts/advanced-topics/plan-mode)
-    - [SubAgent 子代理](wiki/core-concepts/advanced-topics/subagents)
     - [Skill 支持](wiki/core-concepts/advanced-topics/skill-support)
+    - [Command 命令](wiki/core-concepts/advanced-topics/commands)
+    - [Rule & Memory](wiki/core-concepts/advanced-topics/rule-memory)
+    - [Plan 模式](wiki/core-concepts/advanced-topics/plan-mode)
   - Event 系统
     - [事件总线架构](wiki/core-concepts/event-system/event-bus)
     - [事件类型](wiki/core-concepts/event-system/event-catalog)

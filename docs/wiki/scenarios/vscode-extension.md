@@ -1,4 +1,4 @@
-# VSCode 插件场景
+# VSCode 插件
 
 ## 项目概述
 
@@ -6,7 +6,7 @@
 
 完整的 VSCode 插件项目：[sema-code-vscode-extension](https://github.com/midea-ai/sema-code-vscode-extension)
 
-<img src="images/sema.gif" alt="Sema Code VSCode Extension" />  
+<video src="https://github.com/midea-ai/sema-code-vscode-extension/releases/download/demo/SemaCode.mp4" controls width="100%"></video>
 
 
 ## 核心特性

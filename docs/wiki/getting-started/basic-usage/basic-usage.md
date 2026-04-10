@@ -8,19 +8,24 @@
 interface SemaCoreConfig {
   workingDir?: string;               // 项目绝对路径
   logLevel?: 'debug' | 'info' | 'warn' | 'error' | 'none'; // 默认 'info'
-  stream?: boolean;                  // 流式输出ai响应，默认 是
-  thinking?: boolean;                // 流式输出ai响应，默认 否
+  stream?: boolean;                  // 流式输出 AI 响应，默认 否
+  thinking?: boolean;                // 流式输出 AI 思考过程，默认 否
   systemPrompt?: string;             // 系统提示
-  customRules?: string;              // 用户规则
-  skipFileEditPermission?: boolean;  // 是否跳过文件编辑权限检查，默认 否
-  skipBashExecPermission?: boolean;  // 是否跳过bash执行权限检查，默认 否
-  skipSkillPermission?: boolean;     // 是否跳过Skill权限检查，默认 否
-  skipMCPToolPermission?: boolean;   // 是否跳过MCP工具权限检查，默认 否
-  enableLLMCache?: boolean;          // 是否开启LLM缓存，默认 否 建议只在重复测试时使用
-  useTools?: string[] | null;        // 限定使用的工具 默认 null 使用所有工具
-  agentMode?: 'Agent' | 'Plan' ;     // 默认 'Agent'
+  customRules?: string;              // 用户规则（内联字符串）
+  skipFileEditPermission?: boolean;  // 是否跳过文件编辑权限检查，默认 是
+  skipBashExecPermission?: boolean;  // 是否跳过 bash 执行权限检查，默认 否
+  skipSkillPermission?: boolean;     // 是否跳过 Skill 权限检查，默认 否
+  skipMCPToolPermission?: boolean;   // 是否跳过 MCP 工具权限检查，默认 否
+  enableLLMCache?: boolean;          // 是否开启 LLM 缓存，默认 否（建议只在重复测试时使用）
+  useTools?: string[] | null;        // 限定使用的工具，默认 null（使用所有工具）
+  agentMode?: 'Agent' | 'Plan';      // 默认 'Agent'
+  disableTopicDetection?: boolean;   // 是否禁用话题检测，默认 否
+  enableClaudeCodeCompat?: boolean;  // 是否兼容 Claude Code 生态（CLAUDE.md/.claude/agents/.mcp.json 等），默认 是
+  disableBackgroundTasks?: boolean;  // 是否禁止后台任务（Bash 后台 / Agent 后台 / 超时转后台），默认 否
 }
 ```
+
+> 可通过 `sema.updateCoreConfByKey(key, value)` 或 `sema.updateCoreConfig(partial)` 在运行时更新这些字段（除 `workingDir`、`logLevel`、`useTools`、`agentMode` 外，其余可更新字段在 `UpdatableCoreConfigKeys` 中定义）。`useTools` 通过 `updateUseTools()` 更新；`agentMode` 通过 `updateAgentMode()` 更新。
 
 <figure align="center">
   <img src="images/system-conf.png" alt="model-list">
@@ -58,11 +63,14 @@ await sema.createSession('existing-session-id')
 `createSession` 完成后会触发 `session:ready` 事件：
 
 ```javascript
-sema.on('session:ready', ({ sessionId, historyLoaded, projectInputHistory }) => {
+sema.on('session:ready', ({ pid, workingDir, sessionId, historyLoaded, usage, todos }) => {
   console.log('会话已就绪:', sessionId)
   console.log('已恢复历史:', historyLoaded)
+  console.log('当前 token:', usage.useTokens, '/', usage.maxTokens)
 })
 ```
+
+> 若当前正在处理消息时再次调用 `createSession`，引擎会先中断当前请求并等待旧会话结束（最多 10 秒），再切换到新会话。
 
 ### 4. 处理用户输入
 
@@ -75,6 +83,8 @@ sema.on('state:update', ({ state }) => {
   if (state === 'idle') console.log('执行完毕')
 })
 ```
+
+> 处理中再次调用 `processUserInput` 时，新输入会按 `command`（以 `/` 开头）/ `inject`（普通消息）类型自动入队，当前轮次结束后自动消费。`/btw <question>` 是旁路问答，不影响主对话状态，回复通过 `btw:response` 事件返回。
 
 ### 5. 中断执行
 
@@ -116,11 +126,12 @@ async function main() {
     console.log(`\n  ✓ [${toolName}] ${summary}`)
   })
 
-  sema.on('tool:permission:request', ({ toolName, title }) => {
+  sema.on('tool:permission:request', ({ toolId, toolName, title }) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
     rl.question(`\n允许执行 "${title}"? (y/n): `, (answer) => {
       rl.close()
       sema.respondToToolPermission({
+        toolId,    // 必传：与请求事件中的 toolId 对应，用于精确匹配
         toolName,
         selected: answer.toLowerCase() === 'y' ? 'agree' : 'refuse',
       })
@@ -166,8 +177,17 @@ const sema = new SemaCore({
   skipBashExecPermission: true,
   skipSkillPermission: true,
   skipMCPToolPermission: true,
-  // 跳过 AskUserQuestion、ExitPlanMode
-  useTools: ["Bash", "Glob", "Grep", "Read", "Edit", "Write", "Skill", "Task", "TodoWrite", "NotebookEdit"]
+  // 移除 AskUserQuestion / ExitPlanMode（避免主动等待用户）
+  useTools: ["Bash", "Glob", "Grep", "Read", "Edit", "Write", "Skill", "Agent", "TodoWrite", "NotebookEdit", "TaskOutput", "TaskStop"]
+})
+```
+
+### 禁用后台任务
+
+```javascript
+const sema = new SemaCore({
+  workingDir: '/path/to/project',
+  disableBackgroundTasks: true,  // Bash/Agent 工具的 run_in_background 字段会从 schema 中过滤
 })
 ```
 

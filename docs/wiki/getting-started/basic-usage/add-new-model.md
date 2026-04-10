@@ -19,16 +19,17 @@
 
 ```javascript
 interface ModelConfig {
-  name: string          // 自定义模型名称（唯一标识，格式: `${modelName}[${provider}]`）
   provider: string      // 提供商
   modelName: string     // 提供商侧的模型 ID
-  baseURL?: string      // 自定义 API 地址
+  baseURL: string       // 自定义 API 地址
   apiKey: string        // API Key
   maxTokens: number     // 单次响应最大 token 数
   contextLength: number // 上下文窗口大小
-  adapt?: 'anthropic' | 'openai'  // SDK 适配类型，默认 'anthropic'
+  adapt?: 'anthropic' | 'openai'  // SDK 适配类型，自动检测
 }
 ```
+
+> 模型在内部以 `${modelName}[${provider}]` 作为唯一标识，例如 `deepseek-reasoner[deepseek]`。无需手动传入 `name` 字段。
 
 ## 添加模型
 
@@ -72,15 +73,25 @@ await sema.applyTaskModel({
 ### 获取模型数据
 
 ```javascript
-const { modelProfiles, modelPointers, currentModel } = await sema.getModelData()
-console.log('当前模型:', currentModel)
-console.log('主模型:', modelPointers.main)
-console.log('快速模型:', modelPointers.quick)
+const { modelName, modelList, taskConfig } = await sema.getModelData()
+console.log('当前主模型:', modelName)            // 同 taskConfig.main
+console.log('已配置模型列表:', modelList)         // string[]
+console.log('主模型 / 快速模型:', taskConfig)     // { main, quick }
+```
+
+`ModelUpdateData` 接口：
+
+```typescript
+interface ModelUpdateData {
+  modelName: string                       // 主模型名称
+  modelList: string[]                     // 全部已配置的模型名称
+  taskConfig: { main: string; quick: string }
+}
 ```
 
 ## 持久化
 
-模型配置自动持久化到 `~/.sema/models.json`：
+模型配置自动持久化到 `~/.sema/model.conf`：
 
 ```json
 {
@@ -112,6 +123,7 @@ console.log('快速模型:', modelPointers.quick)
   }
 }
 ```
+
 下次创建 `SemaCore` 实例时，已保存的模型无需重新添加。
 
 ## 其他API

@@ -1,6 +1,6 @@
 # Skill 使用
 
-Skill 是存储在 Markdown 文件中的可复用 AI 工作流。通过 Skill，你可以将常用的操作（如代码提交、代码审查、测试等）封装为标准化流程，在对话中直接调用。
+Skill 是存储在 Markdown 文件中的可复用 AI 工作流。通过 Skill，你可以将常用操作（如代码提交、代码审查、测试等）封装为标准化流程，由 AI 在合适时机自动调用，或在对话中直接触发。
 
 ## Skill 文件格式
 
@@ -10,14 +10,6 @@ Skill 采用带 YAML frontmatter 的 Markdown 文件：
 ---
 name: commit
 description: 按照项目规范创建 Git 提交
-allowed-tools:
-  - Bash
-  - Read
-  - Glob
-when-to-use: 当用户需要提交代码时使用
-model: sonnet
-argument-hint: "可选的提交信息前缀"
-version: "1.0.0"
 ---
 
 # Git 提交 Skill
@@ -32,97 +24,104 @@ version: "1.0.0"
 请分析改动并创建规范的提交。
 ```
 
+### 必填字段
 
-## Skill 元数据字段
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `name` | `string` | Skill 唯一名称（调用时使用） |
+| `description` | `string` | Skill 功能描述（AI 据此决定何时使用） |
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `name` | `string` | ✓ | Skill 唯一名称（调用时使用） |
-| `description` | `string` | ✓ | Skill 功能描述 |
-| `allowed-tools` | `string[]` | — | 软约束：推荐使用的工具列表，支持数组或空格分隔的字符串 |
-| `when-to-use` | `string` | — | 使用时机说明，会在系统提示中展示 |
-| `model` | `string` | — | 指定模型：`haiku` / `sonnet` / `opus` / `inherit` |
-| `max-thinking-tokens` | `number` | — | 最大思考 token 数 |
-| `disable-model-invocation` | `boolean` | — | 禁用 LLM 调用，只返回 Skill 内容 |
-| `argument-hint` | `string` | — | 调用时参数格式提示 |
-| `version` | `string` | — | Skill 版本号 |
+> Sema 的 Skill 解析器只读取 `name` / `description` / `prompt`（即 frontmatter 后的 Markdown 正文）。其它常见 Claude Skills 字段（`allowed-tools`、`when-to-use`、`model`、`max-thinking-tokens`、`disable-model-invocation`、`argument-hint`、`version` 等）不会被解析为运行时约束，仅用于兼容来自 Claude 生态的现成 Skill 文件。如需类似能力，请用 [SubAgent](wiki/getting-started/basic-usage/subagent-usage)（`tools` 软约束 + `model` 选择）。
 
 
 ## 存放位置与优先级
 
-Skill 文件支持两种组织方式：
+按从高到低的顺序：
 
-**子目录方式（推荐）**：在 skills 目录下创建以 Skill 名命名的子目录，内含 `SKILL.md`（大小写不敏感，支持 `SKILL.md`、`skill.md`、`Skill.md`）：
+| 优先级 | 来源 | 路径 |
+|-------|------|------|
+| 1（最高） | Sema 项目级 | `<project>/.sema/skills/` |
+| 2 | Sema 用户级 | `~/.sema/skills/` |
+| 3 | 插件级 | 已安装且启用的插件提供的 skills |
+| 4 | Claude 项目级 | `<project>/.claude/skills/` |
+| 5（最低） | Claude 用户级 | `~/.claude/skills/` |
+
+> Claude 来源由 `enableClaudeCodeCompat` 控制（默认开启）。
+
+### 文件组织方式
+
+**子目录方式（推荐）**：`SKILL.md`（大小写敏感）
 
 ```
 .sema/skills/commit/SKILL.md
 ~/.sema/skills/commit/SKILL.md
 ```
 
-**直接文件方式**：在 skills 目录下直接放置 `.md` 文件：
+**直接文件方式**：
 
 ```
 .sema/skills/commit.md
 ~/.sema/skills/commit.md
 ```
 
-| 级别 | 路径 | 优先级 |
-|------|------|--------|
-| 项目级 | `.sema/skills/` | 高（覆盖同名用户级） |
-| 用户级 | `~/.sema/skills/` | 低 |
-
-同名 Skill：项目级优先于用户级。
-
 
 ## 创建 Skill
 
 ```bash
-# 创建项目级 Skill（子目录方式）
 mkdir -p .sema/skills/commit
 cat > .sema/skills/commit/SKILL.md << 'EOF'
 ---
 name: commit
-description: 创建规范的 Git 提交
-allowed-tools: [Bash, Read]
-model: sonnet
+description: 创建符合 Conventional Commits 规范的 Git 提交
 ---
 
 分析 git diff --staged 的内容，创建符合 Conventional Commits 规范的提交信息。
 EOF
 ```
 
+无需重启 Sema Core，下次 `getSkillsInfo()` / `refreshSkillsInfo()` 后即生效。
 
-## 查看已加载的 Skill
+
+## 查看与刷新 Skill
 
 ```javascript
-const skills = sema.getSkillsInfo()
+// 获取所有 Skill（含缓存）
+const skills = await sema.getSkillsInfo()
+
 skills.forEach(skill => {
-  console.log(`${skill.name} [${skill.locate}]: ${skill.description}`)
+  console.log(`${skill.name} [${skill.locate}/${skill.from}]: ${skill.description}`)
 })
+
+// 强制从磁盘刷新
+await sema.refreshSkillsInfo()
+
+// 删除某个 Skill 配置（仅 Sema 来源可删，Claude/插件 来源只读）
+await sema.removeSkillConf('commit')
 ```
 
-`SkillInfo` 结构：
+`SkillConfig` 接口：
 
 ```typescript
-interface SkillInfo {
+interface SkillConfig {
   name: string
   description: string
-  locate: 'user' | 'project'   // 来源：user（用户级） 或 project（项目级）
+  prompt: string                  // SKILL.md 正文（不含 frontmatter）
+  locate?: 'user' | 'project' | 'plugin'
+  from?: 'sema' | 'claude' | 'plugin'
+  filePath?: string
 }
 ```
 
 
-## 在对话中调用 Skill
+## 在对话中触发 Skill
 
-在用户输入中使用 `/skill-name` 语法触发 Skill：
+Sema 内置 `Skill` 工具，AI 在判断需要时会自动调用对应的 Skill。用户也可以在输入中显式引导：
 
 ```
-/commit
-/commit feat: 添加用户认证模块
-/review src/auth.ts
+帮我用 commit skill 提交当前改动
 ```
 
-AI 会自动调用 `Skill` 工具加载对应的 Skill 内容并执行。
+> Skill 注入到系统提示词的方式：在第一次查询时，所有可用 Skill 的 `name` + `description` 列表会通过 `<system-reminder>` 注入，告知 AI 它有哪些 Skill 可用。具体内容由 `Skill` 工具按需 fetch。
 
 
 ## 示例：代码审查 Skill
@@ -132,11 +131,7 @@ AI 会自动调用 `Skill` 工具加载对应的 Skill 内容并执行。
 ```markdown
 ---
 name: review
-description: 对指定文件进行代码审查
-allowed-tools: [Read, Glob, Grep]
-when-to-use: 用户需要审查代码质量时
-model: opus
-argument-hint: "要审查的文件路径"
+description: 对指定文件进行代码审查，覆盖正确性、性能、安全、可维护性
 ---
 
 # 代码审查
@@ -151,3 +146,8 @@ argument-hint: "要审查的文件路径"
 
 输出结构化的审查报告，每个问题注明文件和行号。
 ```
+
+
+## 进一步了解
+
+更深入的 Skill 系统设计、加载流程、与 SubAgent 的对比，参考 [Skill 支持](wiki/core-concepts/advanced-topics/skill-support)。

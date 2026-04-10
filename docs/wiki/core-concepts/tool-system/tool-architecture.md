@@ -6,28 +6,37 @@
 
 所有工具（包括内置、MCP）都实现同一个接口：
 
-```javascript
-interface Tool<TInput = ZodObject<any>, TOutput = any> {
+```typescript
+interface Tool<TInput extends z.ZodObject<any> = z.ZodObject<any>, TOutput = any> {
   // 工具名称（唯一标识，传给 LLM 的名称）
   name: string
 
   // 工具描述（告诉 LLM 何时使用此工具）
   description?: string | (() => string)
 
-  // 输入参数 Schema（Zod 对象）
+  // 输入参数 Schema（Zod 对象，建议使用 z.strictObject 拒绝额外字段）
   inputSchema: TInput
 
-  // 是否为只读工具（影响并发执行策略）
-  isReadOnly(): boolean
+  // 是否为只读工具（只读工具可与其他只读工具并发执行）
+  isReadOnly: () => boolean
 
-  // 执行前验证输入（返回 false 可阻止执行）
+  // 工具虽非只读，但多个实例之间互相独立，可与其他可并发工具一起并发执行
+  // 典型例子：Agent 工具，多个子代理实例间状态完全隔离
+  canRunConcurrently?: () => boolean
+
+  // 工具是否支持中断并返回部分结果（如 Bash、TaskOutput）
+  // 实现并返回 true 时，工具被中断后会保留 genResultForAssistant 的结果；
+  // 不实现或返回 false 时，中断会被替换为标准取消消息
+  supportsInterrupt?: () => boolean
+
+  // 执行前验证输入（返回 { result: false, message } 可阻止执行）
   validateInput?(
     input: z.infer<TInput>,
     agentContext: AgentContext
   ): Promise<ValidationResult>
 
-  // 将工具输出转换为返回给 LLM 的字符串（必须实现）
-  genResultForAssistant(output: TOutput): string
+  // 必需：将工具输出格式化为返回给 LLM 的内容（字符串或 content blocks）
+  genResultForAssistant(output: TOutput): Anthropic.ToolResultBlockParam['content']
 
   // 生成权限请求的展示内容（用于 tool:permission:request 事件）
   genToolPermission?(input: z.infer<TInput>): {
@@ -50,19 +59,31 @@ interface Tool<TInput = ZodObject<any>, TOutput = any> {
   call(
     input: z.infer<TInput>,
     agentContext: AgentContext
-  ): AsyncGenerator<{ type: 'result'; data: TOutput; resultForAssistant?: string }, void>
+  ): AsyncGenerator<
+    {
+      type: 'result'
+      data: TOutput
+      // 可选：覆盖 genResultForAssistant 的返回值
+      resultForAssistant?: Anthropic.ToolResultBlockParam['content']
+      // 可选：附加 content blocks（如图片），与 tool_result 一起返回给 LLM
+      additionalBlocks?: Anthropic.ContentBlockParam[]
+    },
+    void,
+    unknown
+  >
 }
 ```
 
 
-## isReadOnly 的作用
+## 三个执行策略相关的方法
 
-`isReadOnly()` 决定工具在被批量调用时的执行策略：
+| 方法 | 作用 | 默认 |
+|------|------|------|
+| `isReadOnly()` | 不修改外部状态、可与其他只读工具并发执行 | 必填 |
+| `canRunConcurrently()` | 非只读但实例间相互独立，可参与并发批次 | 未实现视为 `false` |
+| `supportsInterrupt()` | 支持中断保留部分结果 | 未实现视为 `false` |
 
-- **返回 `true`**：工具可安全并行执行（不修改外部状态）
-- **返回 `false`**：工具需要串行执行（防止竞态条件）
-
-详见本文下方的[并发与串行执行](#并发与串行执行)。
+详见本文下方的[并发与串行执行](#并发与串行执行)与[中断与部分结果](#中断与部分结果)。
 
 
 ## 工具注册
@@ -85,25 +106,29 @@ const toolInfos = getToolInfos()
 const sdkTools = buildTools(filteredTools)
 ```
 
+> `buildTools` 还会读取核心配置 `disableBackgroundTasks`：当其为 `true` 时，会从 `Bash` 与 `Agent` 的 inputSchema 中自动剔除 `run_in_background` 字段，确保 LLM 看不到该参数。
+
 
 ## 工具分类
 
-### 内置工具（12 个）
+### 内置工具（14 个）
 
-| 工具 | 类型 | isReadOnly |
-|------|------|-----------|
-| [Bash](wiki/core-concepts/tool-system/built-in-tools/bashtool) | 终端执行 | false |
-| [Glob](wiki/core-concepts/tool-system/built-in-tools/globtool) | 文件搜索 | true |
-| [Grep](wiki/core-concepts/tool-system/built-in-tools/greptool) | 文本搜索 | true |
-| [Read](wiki/core-concepts/tool-system/built-in-tools/readtool) | 文件读取 | true |
-| [Write](wiki/core-concepts/tool-system/built-in-tools/writetool) | 文件写入 | false |
-| [Edit](wiki/core-concepts/tool-system/built-in-tools/edittool) | 文件编辑 | false |
-| [NotebookEdit](wiki/core-concepts/tool-system/built-in-tools/notebookedittool) | Notebook 编辑 | false |
-| [TodoWrite](wiki/core-concepts/tool-system/built-in-tools/todowritetool) | 任务管理 | false |
-| [Task](wiki/core-concepts/tool-system/built-in-tools/tasktool) | 子代理创建 | false |
-| [Skill](wiki/core-concepts/tool-system/built-in-tools/skilltool) | Skill 调用 | false |
-| [AskUserQuestion](wiki/core-concepts/tool-system/built-in-tools/askuserquestiontool) | 用户交互 | false |
-| [ExitPlanMode](wiki/core-concepts/tool-system/built-in-tools/exitplanmodetool) | 退出 Plan 模式 | false |
+| 工具 | 类型 | isReadOnly | 备注 |
+|------|------|-----------|------|
+| [Bash](wiki/core-concepts/tool-system/built-in-tools/bashtool) | 终端执行 | false | `supportsInterrupt`、支持后台任务 |
+| [Glob](wiki/core-concepts/tool-system/built-in-tools/globtool) | 文件搜索 | true | |
+| [Grep](wiki/core-concepts/tool-system/built-in-tools/greptool) | 文本搜索 | true | |
+| [Read](wiki/core-concepts/tool-system/built-in-tools/readtool) | 文件读取 | true | |
+| [Write](wiki/core-concepts/tool-system/built-in-tools/writetool) | 文件写入 | false | |
+| [Edit](wiki/core-concepts/tool-system/built-in-tools/edittool) | 文件编辑 | false | |
+| [NotebookEdit](wiki/core-concepts/tool-system/built-in-tools/notebookedittool) | Notebook 编辑 | false | |
+| [TodoWrite](wiki/core-concepts/tool-system/built-in-tools/todowritetool) | 任务管理 | false | |
+| [Agent](wiki/core-concepts/tool-system/built-in-tools/tasktool) | 子代理创建 | false | `canRunConcurrently`、支持后台任务 |
+| [Skill](wiki/core-concepts/tool-system/built-in-tools/skilltool) | Skill 调用 | false | |
+| [AskUserQuestion](wiki/core-concepts/tool-system/built-in-tools/askuserquestiontool) | 用户交互 | false | |
+| [ExitPlanMode](wiki/core-concepts/tool-system/built-in-tools/exitplanmodetool) | 退出 Plan 模式 | false | |
+| [TaskOutput](wiki/core-concepts/tool-system/built-in-tools/taskoutputtool) | 后台任务输出读取 | true | `supportsInterrupt` |
+| [TaskStop](wiki/core-concepts/tool-system/built-in-tools/taskstoptool) | 后台任务停止 | false | |
 
 ### MCP 工具
 
@@ -135,7 +160,7 @@ if (!tool.isReadOnly()) {
   }
 
   const permissionResult = await hasPermissionsToUseTool(
-    tool, input, abortController, assistantMessage, agentId
+    tool, input, abortController, assistantMessage, agentId, toolUseID
   )
 
   if (!permissionResult.result) {
@@ -155,21 +180,30 @@ if (!tool.isReadOnly()) {
 
 # 并发与串行执行
 
-当 LLM 在一轮响应中发起多个工具调用时，Sema 会根据工具的 `isReadOnly()` 返回值自动决定执行策略。
+当 LLM 在一轮响应中发起多个工具调用时，Sema 会根据工具的 `isReadOnly()` 与 `canRunConcurrently()` 自动决定执行策略。
 
-## 工具执行
+## 判定规则
 
 ```
-本轮所有工具调用中，是否存在 isReadOnly() = false 的工具？
+本轮所有工具调用是否满足：每个工具 isReadOnly() === true || canRunConcurrently() === true ？
     │
-    ├─ 否（全部只读）→ 并发执行（Promise.all）
-    └─ 是（有写操作）→ 串行执行（按顺序）
+    ├─ 是 → 并发执行（runToolsConcurrently）
+    └─ 否 → 串行执行（runToolsSerially）
+```
+
+对应实现见 `src/core/Conversation.ts:180`：
+
+```javascript
+const canRunConcurrently = toolUseMessages.every(msg => {
+  const tool = tools.find(t => t.name === msg.name)
+  return tool?.isReadOnly?.() || tool?.canRunConcurrently?.() || false
+})
 ```
 
 
 ### 并发执行
 
-**条件**：本轮所有工具的 `isReadOnly()` 均返回 `true`
+**条件**：本轮所有工具均为只读，或显式声明 `canRunConcurrently`。
 
 ```javascript
 // 内部实现示意
@@ -179,21 +213,29 @@ const results = await Promise.all(
 // 按原始顺序返回结果（不受执行完成顺序影响）
 ```
 
-**示例场景**：LLM 同时搜索多个文件
+**示例 1**：LLM 同时读取多个文件 / 搜索多个目录
 
 ```
 LLM 调用:
-  ├─ Read("src/core/SemaCore.ts")     → 并行执行
-  ├─ Read("src/core/SemaEngine.ts")   → 并行执行
-  └─ Grep("pattern", "src/")         → 并行执行
+  ├─ Read("src/core/SemaCore.ts")     → 并行
+  ├─ Read("src/core/SemaEngine.ts")   → 并行
+  └─ Grep("pattern", "src/")          → 并行
 ```
 
-三个工具同时发起，任一完成不需等待其他，总耗时取决于最慢的那个。
+**示例 2**：LLM 同时启动多个子代理
+
+```
+LLM 调用:
+  ├─ Agent(subagent_type="Explore", …)   → 并行
+  └─ Agent(subagent_type="Plan", …)      → 并行
+```
+
+`Agent` 工具虽然 `isReadOnly === false`（子代理可能写文件），但因实例间状态完全隔离，声明了 `canRunConcurrently === true`，因此可与其他可并发工具并行调度。
 
 
 ### 串行执行
 
-**条件**：本轮存在任意一个 `isReadOnly()` 返回 `false` 的工具
+**条件**：本轮存在任意一个 `isReadOnly() === false` 且未声明 `canRunConcurrently()` 的工具。
 
 ```javascript
 // 内部实现示意
@@ -204,11 +246,11 @@ for (const toolCall of toolCalls) {
 }
 ```
 
-**示例场景**：先写文件再编辑
+**示例**：先写文件再编辑
 
 ```
 LLM 调用:
-  ├─ Write("new-file.ts", content)  → 先执行（等待完成）
+  ├─ Write("new-file.ts", content)  → 先执行
   └─ Edit("new-file.ts", ...)       → 后执行
 ```
 
@@ -221,14 +263,44 @@ LLM 调用:
 ```
 LLM 调用:
   ├─ Read("config.ts")   → isReadOnly=true
-  ├─ Edit("main.ts", …)  → isReadOnly=false（触发串行）
+  ├─ Edit("main.ts", …)  → isReadOnly=false 且未声明 canRunConcurrently（触发串行）
   └─ Glob("**/*.ts")     → isReadOnly=true
 
 → 结果：所有三个工具串行执行
 ```
 
 
-## 性能建议
+# 中断与部分结果
 
-为了最大化并发执行的概率，LLM 在多个只读操作时（如同时搜索多个文件）会将它们合并在同一轮工具调用中返回，而不是分多轮。这是通过系统提示词引导 LLM 的行为。
+当用户中断（`abort`）正在执行的工具时，Sema 根据工具是否声明 `supportsInterrupt()` 采用不同策略：
 
+| `supportsInterrupt()` | 中断时行为 |
+|-----------------------|-----------|
+| 未实现 / 返回 `false` | 丢弃工具产出，向 LLM 返回标准取消消息（`createToolResultStopMessage`）|
+| 返回 `true` | 保留工具内部已生成的部分结果（由 `genResultForAssistant` 序列化），与中断标记一起返回 LLM |
+
+实现该方法的内置工具：
+
+- **Bash**：中断时保留已捕获的 stdout / stderr，并附 `INTERRUPT_MESSAGE_FOR_TOOL_USE` 标记
+- **TaskOutput**：阻塞等待后台任务输出时被中断，会返回当前的输出快照与 `retrievalStatus: 'not_ready'`
+
+实现细节见 `src/core/RunTools.ts:131`。
+
+
+# 后台任务相关
+
+`Bash` 与 `Agent` 工具的 inputSchema 都包含 `run_in_background` 字段，配合 `TaskOutput` / `TaskStop` 工具，构成完整的后台任务能力：
+
+- **启动**：`Bash(run_in_background: true)` 直接 spawn 独立进程；`Agent(run_in_background: true)` 启动独立 AbortController 的子代理循环
+- **接管**：`Bash` 同步执行超时时，自动把底层 shell 接管为后台任务（`takeoverTask`）
+- **读取**：`TaskOutput(task_id, block, timeout)` 拉取已完成快照或阻塞等待
+- **停止**：`TaskStop(task_id)` 向后台任务发起停止
+
+约束：
+
+- 子代理（`agentId !== MAIN_AGENT_ID`）强制不允许后台任务，`run_in_background` 即使被传入也被忽略
+- 核心配置 `disableBackgroundTasks: true` 时：
+  - `buildTools` 会从 `Bash` / `Agent` 的 schema 中过滤 `run_in_background`，LLM 看不到该参数
+  - 超时接管 / 转后台等路径同样禁用
+
+详见 [Bash 后台任务](wiki/core-concepts/task-management/bash-task) 与 [Agent 后台任务](wiki/core-concepts/task-management/agent-task)。

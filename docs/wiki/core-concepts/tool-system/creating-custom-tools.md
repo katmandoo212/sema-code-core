@@ -75,8 +75,14 @@ export const MyCustomTool = {
   }),
 
   isReadOnly() {
-    return false  // 串行执行
+    return false  // 非只读：默认串行执行
   },
+
+  // 可选：非只读但实例间互相独立时声明，可与其他可并发工具一起并发
+  // canRunConcurrently() { return true },
+
+  // 可选：声明支持中断保留部分结果（如长跑命令、流式读取）
+  // supportsInterrupt() { return true },
 
   async validateInput({ param1 }, agentContext) {
     if (!param1 || param1.length === 0) {
@@ -115,6 +121,7 @@ export const MyCustomTool = {
     const result = await doSomething(param1, param2)
 
     // resultForAssistant 可选，若提供则优先用于回传给 LLM，否则调用 genResultForAssistant
+    // additionalBlocks 可选，用于附加额外 content blocks（如图片）
     yield { type: 'result', data: result }
   },
 }
@@ -124,9 +131,13 @@ export const MyCustomTool = {
 ## 注意事项
 
 - `inputSchema` 使用 `z.object()`；如需严格拒绝额外字段，可使用 `z.strictObject()`
-- `genResultForAssistant` 是**必需**方法，用于将输出序列化为返回给 LLM 的文本
-- `call()` 是异步生成器，通过 `yield { type: 'result', data }` 返回结果；可附加可选的 `resultForAssistant` 字段覆盖 `genResultForAssistant` 的输出
+- `genResultForAssistant` 是**必需**方法，用于将输出序列化为返回给 LLM 的内容（字符串或 `Anthropic.ToolResultBlockParam['content']`）
+- `call()` 是异步生成器，通过 `yield { type: 'result', data }` 返回结果；可附加可选字段：
+  - `resultForAssistant` 覆盖 `genResultForAssistant` 的输出
+  - `additionalBlocks` 附加 content blocks，与 tool_result 一起返回 LLM
 - `agentContext.agentId` 用于区分主 Agent 和 SubAgent
-- 若工具有副作用，`isReadOnly()` 必须返回 `false`（只有所有工具都返回 `true` 时才并发执行）
+- 若工具有副作用，`isReadOnly()` 必须返回 `false`
+- 并发判定基于 `isReadOnly() || canRunConcurrently()`：只有同一轮所有工具都满足这个条件时才会并发执行；若你的工具非只读但多个实例之间互相独立（如基于 task id 操作），可声明 `canRunConcurrently() === true`
+- 若工具内部能在中断时保留有用的部分结果（如已打印的输出），可实现 `supportsInterrupt() === true`，否则中断会被替换为标准取消消息
 - `validateInput` 返回 `{ result: false }` 会阻止工具执行，错误信息会返回给 LLM
 - `genToolPermission` 的返回值中 `summary` 为可选字段

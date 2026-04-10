@@ -1,31 +1,34 @@
 # Command 使用
 
-Command 是以 Markdown 文件形式存储的自定义快捷指令，允许你为常用操作定义命令名称，在对话中直接触发特定的提示词或工作流。支持传入参数，同时内置了 `/clear`、`/compact` 等系统命令。
+Command 是以 Markdown 文件形式存储的自定义快捷指令，允许你为常用操作定义命令名称，在对话中直接触发特定的提示词或工作流。支持参数占位符，同时内置了 `/clear`、`/compact`、`/btw` 等系统命令。
 
 ## 与 Skill 的区别
 
 | 特性 | Command | Skill |
 |------|---------|-------|
-| 存储格式 | Markdown 文件（.md） | Markdown 文件 |
-| 复杂度 | 简单提示词映射 | 完整工作流 |
-| 参数支持 | `$ARGUMENTS` 占位符 | 可配置 |
-| 工具约束 | 无 | 可配置 |
-| 模型指定 | 无 | 可配置 |
+| 调用方式 | 用户直接 `/cmd` | AI 自动判断或用户引导 |
+| 复杂度 | 简单提示词映射 | 完整工作流（含 fetch 流程） |
+| 参数支持 | `$ARGUMENTS` 占位符 | 自然语言传入 |
 
 
-## 命令存储位置
+## 命令存储位置与优先级
 
-Command 文件存放于以下两个目录，支持子目录结构：
+按从高到低的顺序，**后加载的覆盖先加载的**：
 
-- **项目级别**：`<项目根目录>/.sema/commands/`
-- **用户级别**：`~/.sema/commands/`
+| 优先级 | 来源 | 路径 |
+|-------|------|------|
+| 1（最高） | Sema 项目级 | `<project>/.sema/commands/` |
+| 2 | Sema 用户级 | `~/.sema/commands/` |
+| 3 | 插件级 | 已安装且启用的插件提供的 commands |
+| 4 | Claude 项目级 | `<project>/.claude/commands/` |
+| 5（最低） | Claude 用户级 | `~/.claude/commands/` |
 
-当项目级别与用户级别存在同名命令时，**用户级别优先**。
+> Sema 项目级的同名命令会覆盖用户级与 Claude 来源。
 
 
 ## 创建命令文件
 
-每个命令对应一个 `.md` 文件，命令名由文件路径自动生成（路径分隔符替换为 `:`）：
+每个命令对应一个 `.md` 文件，命令名由文件路径自动生成（子目录用 `:` 分隔）：
 
 ```
 .sema/commands/
@@ -50,8 +53,10 @@ frontmatter 支持的字段：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `description` | string | 命令描述，未填写时默认为 "No description" |
-| `argument-hint` | string | 参数提示文本，如 `<file-path>` |
+| `description` | string | 命令描述，未填写时为空 |
+| `argument-hint` | string \| string[] | 参数提示文本，如 `<file-path>` 或 `[pr-number] [priority]` |
+
+> `argument-hint` 中以 `[xxx]` 形式书写的多个槽位会被自动解析为数组。
 
 
 ## 参数传递
@@ -73,38 +78,46 @@ frontmatter 支持的字段：
 |------|------|
 | `/clear` | 清空当前会话的消息历史 |
 | `/compact` | 压缩当前消息历史以减少 token 占用 |
+| `/btw <question>` | 旁路问答：不影响主对话状态，回复通过 `btw:response` 事件返回 |
 
 
-## 获取自定义命令
+## 查看与管理命令
 
 ```javascript
-const commands = await sema.getCustomCommands()
+// 获取所有命令（异步，含缓存）
+const commands = await sema.getCommandsInfo()
 commands.forEach(cmd => {
-  console.log(`${cmd.displayName}: ${cmd.description}`)
+  console.log(`/${cmd.name}: ${cmd.description}`)
 })
+
+// 强制刷新（命令文件变更后调用）
+await sema.refreshCommandsInfo()
+
+// 添加自定义命令
+await sema.addCommandConf({
+  name: 'fix-lint',
+  description: '修复 lint 错误',
+  argumentHint: '<file-path>',
+  prompt: '请检查并修复 $ARGUMENTS 中的所有 lint 错误。',
+  locate: 'project',  // 'user' / 'project'
+})
+
+// 删除命令（仅 Sema 来源可删，Claude/插件 来源只读）
+await sema.removeCommandConf('fix-lint')
 ```
 
-`CustomCommand` 结构：
+`CommandConfig` 接口：
 
 ```typescript
-interface CustomCommand {
-  name: string          // 命令名（如 "fix-lint" 或 "frontend:generate"）
-  displayName: string   // 显示名（如 "/fix-lint" 或 "/frontend:generate"）
-  description: string   // 命令描述
-  argumentHint?: string // 参数提示文本
-  filePath: string      // 源 .md 文件路径
-  content: string       // Markdown 内容（不含 frontmatter）
-  scope: 'user' | 'project' // 作用域
+interface CommandConfig {
+  name: string                          // 命令名（如 "fix-lint" 或 "frontend:generate"）
+  description: string                   // 命令描述
+  argumentHint?: string | string[]      // 参数提示
+  prompt: string                        // Markdown 正文（不含 frontmatter）
+  locate?: 'user' | 'project' | 'plugin'
+  from?: 'sema' | 'claude' | 'plugin'
+  filePath?: string                     // 源 .md 文件路径
 }
-```
-
-
-## 重新加载命令
-
-当命令文件发生变化时，调用此方法清除缓存并刷新：
-
-```javascript
-sema.reloadCustomCommands()
 ```
 
 
@@ -118,7 +131,9 @@ sema.reloadCustomCommands()
 /frontend:generate Button
 ```
 
+> Command 在 `processUserInput` 入口被识别并展开为对应的 Markdown prompt 后，再交给 LLM 处理。
+
 
 ## 进一步了解
 
-对于更复杂的可复用工作流，推荐使用 [Skill 使用](wiki/getting-started/basic-usage/skill-usage)，它提供了更完整的元数据配置、工具约束和模型指定能力。
+对于更复杂的可复用工作流（含 AI 自动调用、工具约束等），推荐使用 [Skill 使用](wiki/getting-started/basic-usage/skill-usage)；命令系统的更多细节参考 [Command 命令](wiki/core-concepts/advanced-topics/commands)。
