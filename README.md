@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="./docs/images/semacode-logo.png" alt="Sema Code Core Logo" width="75%"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/semacode-logo-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/images/semacode-logo.png">
+  <img src="./docs/images/semacode-logo.png" alt="Sema Code Core Logo" width="75%"/>
+</picture>
 
 <h3>An Event-Driven AI Coding Assistant Core Engine</h3>
 
