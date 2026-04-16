@@ -15,8 +15,7 @@ import { INTERRUPT_MESSAGE, INTERRUPT_MESSAGE_FOR_TOOL_USE } from '../constants/
 import { getStateManager, MAIN_AGENT_ID } from '../manager/StateManager'
 import { getEventBus } from '../events/EventSystem'
 import { getTaskManager } from '../manager/TaskManager'
-import { getTools } from '../tools/base/tools'
-import { getMCPManager } from '../services/mcp/MCPManager'
+import { getAvailableTools } from '../tools/base/tools'
 import { getConfManager } from '../manager/ConfManager'
 import { formatSystemPrompt } from '../services/agents/genSystemPrompt'
 import { generateRulesReminders, generateSkillsReminder } from '../services/agents/systemReminder'
@@ -318,15 +317,8 @@ async function handleControlSignalRebuild(
   logInfo(`检测到模式切换信号，重建上下文: ${rebuildSignal.newMode}`)
 
   // 重新获取工具集
-  const coreConfig = getConfManager().getCoreConfig()
-  const builtinTools = getTools(coreConfig?.useTools)
-  const mcpTools = getMCPManager().getMCPTools()
-  let newTools = [...builtinTools, ...mcpTools]
+  let newTools = getAvailableTools()
 
-  // 根据新模式过滤工具
-  if (rebuildSignal.newMode === 'Plan') {
-    newTools = newTools.filter(tool => tool.name !== 'TodoWrite')
-  }
 
   // 更新代理上下文
   const newAgentContext: AgentContext = {

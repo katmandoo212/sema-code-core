@@ -98,12 +98,16 @@ export class EventBus implements EventBusInterface {
   private static readonly SILENT_EVENTS = new Set([
     'message:thinking:chunk',
     'message:text:chunk',
-    'tool:execution:chunk'
   ]);
 
   emit<T>(event: string, data: T): boolean {
     if (!EventBus.SILENT_EVENTS.has(event)) {
-      logEvent(event, data);
+      // tool:execution:chunk 只打印 WebFetch 的，其他工具不打印
+      const shouldLog = event !== 'tool:execution:chunk'
+        || (data as any)?.toolName === 'WebFetch';
+      if (shouldLog) {
+        logEvent(event, data);
+      }
     }
     return this.emitter.emit(event, data);
   }

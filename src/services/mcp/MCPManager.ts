@@ -23,6 +23,7 @@ import { EventBus } from '../../events/EventSystem'
 import { getSemaRootDir } from '../../util/savePath'
 import { getOriginalCwd } from '../../util/cwd'
 import { getConfManager } from '../../manager/ConfManager'
+import { calcJsonKeyLineRange } from '../../util/file'
 
 /** Sema settings 文件结构（部分） */
 interface SemaSettings {
@@ -209,13 +210,14 @@ class MCPManager {
    * 创建初始状态的 MCPServerInfo
    */
   private newServerInfo(config: MCPServerConfig, status: boolean, useTools?: string[] | null, filePath?: string): MCPServerInfo {
+    const lineRange = filePath ? calcJsonKeyLineRange(filePath, config.name) : undefined
     return {
       config: { ...config, useTools },
       connectStatus: 'disconnected',
       status,
       from: config.from,
       scope: config.scope,
-      filePath
+      filePath: lineRange
     }
   }
 
@@ -409,6 +411,7 @@ class MCPManager {
     const { name } = info.config
     const eventBus = EventBus.getInstance()
     info.connectStatus = 'connecting'
+    info.error = undefined
     eventBus.emit('mcp:server:status', info)
     try {
       await this.disconnectClient(name)
@@ -520,6 +523,7 @@ class MCPManager {
    * 对比配置变化，仅重连配置有变动或新增的服务器，配置未变且已连接的保留现有连接
    */
   async refreshMCPServerConfigs(): Promise<MCPServerInfo[]> {
+    if (this.loadingPromise) return this.loadingPromise
     logDebug('刷新 MCP Server 信息...')
     const oldCache = this.serverInfoCache ? [...this.serverInfoCache] : null
 

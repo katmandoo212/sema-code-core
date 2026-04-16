@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import { Tool } from '../base/Tool'
 import { TOOL_NAME_FOR_PROMPT, getDescription } from './prompt'
 import { defaultBuiltInAgentsConfs } from '../../services/agents/defaultBuiltInAgentsConfs'
-import { getTools } from '../base/tools'
+import { getAvailableBuiltinTools, SUBAGENT_EXCLUDED_TOOLS } from '../base/tools'
 import { getMCPManager } from '../../services/mcp/MCPManager'
 import { query } from '../../core/Conversation'
 import type { AgentContext } from '../../types/agent'
@@ -36,7 +36,7 @@ type Output = {
   durationMs: number
 }
 
-export const TaskTool = {
+export const AgentTool = {
   name: TOOL_NAME_FOR_PROMPT,
   description() {
     return getDescription()
@@ -89,12 +89,11 @@ export const TaskTool = {
       const systemPromptContent = await buildAgentSystemPrompt(agentConfig.prompt)
 
       // 4. 获取子代理允许使用的工具（排除 任务与代理 工具，防止嵌套）
-      const excludedTools = [TOOL_NAME_FOR_PROMPT, 'TaskOutput', 'TaskStop', 'AskUserQuestion', 'ExitPlanMode']
       let subagentTools: Tool[]
       if (!agentConfig.tools || agentConfig.tools === '*') {
-        subagentTools = getTools().filter(t => !excludedTools.includes(t.name))
+        subagentTools = getAvailableBuiltinTools().filter(t => !SUBAGENT_EXCLUDED_TOOLS.has(t.name))
       } else {
-        subagentTools = getTools(agentConfig.tools).filter(t => !excludedTools.includes(t.name))
+        subagentTools = getAvailableBuiltinTools(agentConfig.tools).filter(t => !SUBAGENT_EXCLUDED_TOOLS.has(t.name))
       }
 
       // 子代理的 Bash 工具不支持后台执行：omit run_in_background，模型不可见此字段
@@ -368,7 +367,7 @@ export const TaskTool = {
       }
     } catch (error) {
       // 外层错误（配置错误等）
-      const errorMsg = `TaskTool error: ${error instanceof Error ? error.message : String(error)}`
+      const errorMsg = `AgentTool error: ${error instanceof Error ? error.message : String(error)}`
       logError(errorMsg)
 
       // 清理子代理状态（防止内存泄漏）

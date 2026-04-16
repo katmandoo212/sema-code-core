@@ -425,3 +425,59 @@ export function isDirEmpty(dirPath: string): boolean {
     return false
   }
 }
+
+/**
+ * 在 JSON.stringify(data, null, 2) 生成的文本中，查找包含 match 的对象块行范围。
+ *
+ * 算法：找到 match 所在行，往回找最近的含 '{' 的行作为对象起始，
+ * 记录该行缩进，然后往下找同缩进的 '}' 行作为对象结束。
+ *
+ * @param json  JSON 文本（需 2-space 缩进格式）
+ * @param match 匹配文本，如 `"id": "abc123"` 或 `"sequential-thinking"`
+ * @returns [startLine, endLine]（1-based），未找到返回 undefined
+ */
+export function findJsonObjectLineRange(json: string, match: string): [number, number] | undefined {
+  const lines = json.split('\n')
+
+  // 1. 找 match 所在行
+  const matchIdx = lines.findIndex(l => l.includes(match))
+  if (matchIdx === -1) return undefined
+
+  // 2. 从 match 行往回找最近的含 '{' 的行
+  let startIdx = -1
+  for (let j = matchIdx; j >= 0; j--) {
+    if (lines[j].includes('{')) {
+      startIdx = j
+      break
+    }
+  }
+  if (startIdx === -1) return undefined
+
+  // 3. 记录起始行缩进（'{' 前的空格数）
+  const indent = lines[startIdx].search(/\S/)
+
+  // 4. 往下找同缩进级别的 '}' 行
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const trimmed = lines[i].trimStart()
+    if (trimmed.startsWith('}') && lines[i].search(/\S/) === indent) {
+      return [startIdx + 1, i + 1]
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * 在 JSON 文件中查找指定 key 对应对象的行范围，返回 "filePath:startLine-endLine"
+ * 找不到则返回纯 filePath
+ */
+export function calcJsonKeyLineRange(filePath: string, key: string): string {
+  try {
+    if (!existsSync(filePath)) return filePath
+    const raw = readFileSync(filePath, 'utf-8')
+    const range = findJsonObjectLineRange(raw, `"${key}"`)
+    return range ? `${filePath}:${range[0]}-${range[1]}` : filePath
+  } catch {
+    return filePath
+  }
+}

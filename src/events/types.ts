@@ -1,3 +1,5 @@
+import type { TodoItem } from '../types/todoTask';
+
 // Sema-Core 事件系统类型定义
 
 // ==================== 事件总线核心类型 ====================
@@ -226,19 +228,12 @@ export interface ToolPermissionResponse {
 
 // ==================== 待办事项相关类型 ====================
 
-/**
- * 待办事项项类型定义
- */
-export interface TodoItem {
-  content: string;     // 任务描述或内容，祈使句形式（例如："运行测试"）
-  status: 'pending' | 'in_progress' | 'completed';  // 任务状态
-  activeForm: string;  // 执行期间显示的现在进行时形式（例如："正在运行测试"）
-}
+export type { TodoItem } from '../types/todoTask';
 
 /**
  * 待办事项更新事件数据
  * 事件: `todos:update`
- * 说明: TodoWriteTool工具执行后触发，todos状态发生变化
+ * 说明: Task工具执行后触发，todos状态发生变化
  */
 export type TodosUpdateData = TodoItem[];
 
@@ -449,6 +444,15 @@ export interface BtwResponseData {
   question: string;   // 用户问题
   content: string;    // 回答内容
 }
+
+// ==================== 定时任务相关事件 ====================
+
+/**
+ * 定时任务更新事件
+ * 事件: `cron:update`
+ * 说明: 定时任务列表发生变化时触发，UI层收到后重新加载任务列表
+ */
+export interface CronUpdateData {}
 
 // ==================== mcp状态相关事件 ====================
 

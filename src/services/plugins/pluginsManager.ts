@@ -785,10 +785,18 @@ class PluginsManager {
       enableClaudeCodeCompat ? this.loadClaudeEnabledPlugins() : Promise.resolve({ local: {}, project: {}, user: {} } as Record<PluginScope, Record<string, boolean>>)
     ])
 
+    // 将 Sema 的 enabledPlugins 合并到 Claude 的上面，使 Sema 设置优先
+    // 这样 enablePlugin/disablePlugin 写入 Sema settings 后也能控制 Claude 来源的插件
+    const mergedClaudeEnabledPluginsMap: Record<PluginScope, Record<string, boolean>> = {
+      local: { ...claudeEnabledPluginsMap.local, ...enabledPluginsMap.local },
+      project: { ...claudeEnabledPluginsMap.project, ...enabledPluginsMap.project },
+      user: { ...claudeEnabledPluginsMap.user, ...enabledPluginsMap.user },
+    }
+
     const [semaResult, claudeResult] = await Promise.all([
       this.buildMarketplaceResult(known, installed, enabledPluginsMap, 'sema'),
       enableClaudeCodeCompat
-        ? this.buildMarketplaceResult(claudeKnown, claudeInstalled, claudeEnabledPluginsMap, 'claude')
+        ? this.buildMarketplaceResult(claudeKnown, claudeInstalled, mergedClaudeEnabledPluginsMap, 'claude')
         : Promise.resolve({ marketplaces: [], plugins: [] })
     ])
 

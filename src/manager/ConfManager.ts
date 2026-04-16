@@ -83,6 +83,7 @@ export class ConfigManager {
       'skipBashExecPermission',
       'skipSkillPermission',
       'skipMCPToolPermission',
+      'skipWebFetchPermission',
       'enableLLMCache',
       'enableClaudeCodeCompat',
       'disableBackgroundTasks'

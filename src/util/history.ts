@@ -1,5 +1,6 @@
 import { Message } from '../types/message';
 import { TodoItem } from '../events/types';
+import { TodoTask } from '../types/todoTask';
 import { logDebug, logInfo, logWarn } from './log';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,6 +20,7 @@ let lastHistoryCleanupTime: number = 0;
 interface HistoryData {
   messages: Message[];
   todos: TodoItem[];
+  todoTasks?: TodoTask[];
   readFileTimestamps?: Record<string, number>;
 }
 
@@ -76,9 +78,10 @@ export async function loadHistory(sessionId?: string, projectPath?: string): Pro
       const historyData: HistoryData = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
       const messages = historyData.messages || [];
       const todos = historyData.todos || [];
+      const todoTasks = historyData.todoTasks || [];
       const readFileTimestamps = historyData.readFileTimestamps || {};
-      logInfo(`加载历史消息 ${messages.length} 条，todos ${todos.length} 项，readFileTimestamps ${Object.keys(readFileTimestamps).length} 项`);
-      return { messages, todos, readFileTimestamps };
+      logInfo(`加载历史消息 ${messages.length} 条，todos ${todos.length} 项，todoTasks ${todoTasks.length} 项，readFileTimestamps ${Object.keys(readFileTimestamps).length} 项`);
+      return { messages, todos, todoTasks, readFileTimestamps };
     } else {
       logInfo(`未找到历史文件: ${historyPath}，开始新会话`);
       return { messages: [], todos: [] };
@@ -214,7 +217,7 @@ export async function cleanupOldHistoryFiles(projectPath?: string): Promise<void
  * @param todos Todo列表
  * @param projectPath 项目绝对路径
  */
-export async function saveHistory(sessionId: string, messages: Message[], todos?: TodoItem[], projectPath?: string, readFileTimestamps?: Record<string, number>): Promise<void> {
+export async function saveHistory(sessionId: string, messages: Message[], todos?: TodoItem[], projectPath?: string, readFileTimestamps?: Record<string, number>, todoTasks?: TodoTask[]): Promise<void> {
   const historyDir = projectPath ? getProjectHistoryDir(projectPath) : getHistoryDir();
   const historyPath = getHistoryFilePath(sessionId, projectPath);
 
@@ -227,6 +230,7 @@ export async function saveHistory(sessionId: string, messages: Message[], todos?
     const historyData: HistoryData = {
       messages: stripRedundantUsage(messages),
       todos: todos || [],
+      ...(todoTasks && todoTasks.length > 0 && { todoTasks }),
       ...(readFileTimestamps && Object.keys(readFileTimestamps).length > 0 && { readFileTimestamps })
     };
 

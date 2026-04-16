@@ -7,22 +7,42 @@ import { FileWriteTool } from '../Write/Write'
 import { GlobTool } from '../Glob/Glob'
 import { GrepTool } from '../Grep/Grep'
 import { NotebookEditTool } from '../NotebookEdit/NotebookEdit'
-import { TodoWriteTool } from '../TodoWrite/TodoWrite'
 import { SkillTool } from '../Skill/Skill'
-import { TaskTool } from '../Agent/Agent'
+import { AgentTool } from '../Agent/Agent'
 import { AskUserQuestionTool } from '../AskUserQuestion/AskUserQuestion'
 import { ExitPlanModeTool } from '../ExitPlanMode/ExitPlanMode'
 import { TaskOutputTool } from '../TaskOutput/TaskOutput'
 import { TaskStopTool } from '../TaskStop/TaskStop'
+import { TaskCreateTool } from '../TaskCreate/TaskCreate'
+import { TaskGetTool } from '../TaskGet/TaskGet'
+import { TaskListTool } from '../TaskList/TaskList'
+import { TaskUpdateTool } from '../TaskUpdate/TaskUpdate'
+import { CronCreateTool } from '../CronCreate/CronCreate'
+import { CronDeleteTool } from '../CronDelete/CronDelete'
+import { CronListTool } from '../CronList/CronList'
 import { WebFetchTool } from '../WebFetch/WebFetch'
+import { getMCPManager } from '../../services/mcp/MCPManager'
 import { getConfManager } from '../../manager/ConfManager'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { memoize } from 'lodash-es'
 import { ToolInfo } from '../../types/index'
+import { logInfo } from '../../util/log'
 
 
-// 获取所有工具信息（内置工具）
-export const getToolInfos = (): ToolInfo[] => {
+const BG_TOOLS = new Set(['Bash', 'Agent'])
+
+// 子代理中禁用的工具（防止嵌套调用、任务管理等）
+export const SUBAGENT_EXCLUDED_TOOLS = new Set([
+  'Agent', 'TaskOutput', 'TaskStop', 'AskUserQuestion', 'ExitPlanMode',
+  'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate'
+])
+
+
+// 将工具对象安全转换为 Tool 类型（各工具的字面量类型与 Tool 泛型不完全匹配）
+const asTool = (tool: any): Tool => tool
+
+// 获取全部内置工具信息（含启用/禁用状态）
+export const getAllBuiltinToolInfos = (): ToolInfo[] => {
   const useTools = getConfManager().getCoreConfig()?.useTools
   return getBuiltinTools().map(tool => ({
     name: tool.name,
@@ -31,26 +51,35 @@ export const getToolInfos = (): ToolInfo[] => {
   }))
 }
 
-// 获取内置工具
+// 获取全部内置工具
 export const getBuiltinTools = (): Tool[] => {
   return [
-    BashTool as unknown as Tool,
-    GlobTool as unknown as Tool,
-    GrepTool as unknown as Tool,
-    FileReadTool as unknown as Tool,
-    FileWriteTool as unknown as Tool,
-    FileEditTool as unknown as Tool,
-    TodoWriteTool as unknown as Tool,
-    SkillTool as unknown as Tool,
-    TaskTool as unknown as Tool,
-    NotebookEditTool as unknown as Tool,
-    AskUserQuestionTool as unknown as Tool,
-    ExitPlanModeTool as unknown as Tool,
-  ]
+    BashTool,
+    GlobTool,
+    GrepTool,
+    FileReadTool,
+    FileWriteTool,
+    FileEditTool,
+    WebFetchTool,
+    AgentTool,
+    TaskOutputTool,
+    TaskStopTool,
+    SkillTool,
+    NotebookEditTool,
+    AskUserQuestionTool,
+    ExitPlanModeTool,
+    TaskCreateTool,
+    TaskGetTool,
+    TaskListTool,
+    TaskUpdateTool,
+    CronCreateTool,
+    CronDeleteTool,
+    CronListTool,
+  ].map(asTool)
 }
 
-// 所有可用工具
-export const getTools = memoize(
+// 获取可用内置工具（按 useTools 配置过滤）
+export const getAvailableBuiltinTools = memoize(
   (useTools?: string[] | null): Tool[] => {
     const allTools = getBuiltinTools()
 
@@ -67,6 +96,16 @@ export const getTools = memoize(
     return useTools.sort().join(',')
   }
 )
+
+// 获取可用内置工具 + MCP 工具
+export function getAvailableTools(): Tool[] {
+  const useTools = getConfManager().getCoreConfig()?.useTools
+  const builtinTools = getAvailableBuiltinTools(useTools)
+  const mcpTools = getMCPManager().getMCPTools()
+  const tools: Tool[] = [...builtinTools, ...mcpTools]
+  logInfo(`tools len: ${tools.length} (builtin: ${builtinTools.length}, mcp: ${mcpTools.length})`)
+  return tools
+}
 
 
 // 从 zod schema 中提取 required 字段
@@ -88,8 +127,6 @@ function extractRequiredFields(schema: any): string[] {
 
   return []
 }
-
-const BG_TOOLS = new Set(['Bash', 'Agent'])
 
 // 使用 memoize 优化的 buildTools 函数
 export const buildTools = memoize(

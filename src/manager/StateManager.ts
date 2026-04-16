@@ -4,17 +4,15 @@
  * 子代理相关事件 message:complete、tool:execution:complete、tool:execution:error、session:interrupted、tool:permission:request 有agentId字段
  */
 
+import * as crypto from 'crypto';
 import { getEventBus } from '../events/EventSystem';
 import { StateUpdateData, SessionState, TodoItem } from '../events/types';
 import { logInfo } from '../util/log';
 import { saveHistory } from '../util/history';
 import { Message } from '../types/message';
 import { getConfManager } from './ConfManager';
+import { TodoTask, TodoTaskStatus } from '../types/todoTask';
 
-// 扩展 TodoItem，添加可选的 id 字段（用于智能更新）
-export interface TodoItemWithId extends TodoItem {
-  id?: string;
-}
 
 // 待处理用户输入项
 export interface PendingUserInput {
@@ -40,9 +38,9 @@ export const MAIN_AGENT_ID = 'main';
  */
 export interface AgentStateAccessor {
   // Todos 管理
-  getTodos(): TodoItemWithId[];
-  setTodos(todos: TodoItemWithId[]): void;
-  updateTodosIntelligently(todos: TodoItemWithId[]): void;
+  getTodos(): TodoItem[];
+  setTodos(todos: TodoItem[]): void;
+  updateTodosIntelligently(todos: TodoItem[]): void;
   clearTodos(): void;
 
   // 消息历史管理
@@ -62,6 +60,14 @@ export interface AgentStateAccessor {
   // 状态管理
   getCurrentState(): SessionState;
   updateState(state: SessionState): void;
+
+  // TodoTask CRUD
+  createTodoTask(task: Omit<TodoTask, 'id' | 'createdAt' | 'updatedAt'>): string;
+  getTodoTask(taskId: string): TodoTask | undefined;
+  listTodoTasks(): TodoTask[];
+  updateTodoTask(taskId: string, updates: Partial<Pick<TodoTask, 'subject' | 'description' | 'status' | 'activeForm' | 'metadata'>>): TodoTask | undefined;
+  deleteTodoTask(taskId: string): boolean;
+  blockTask(fromId: string, toId: string): boolean;
 
   // 清理
   clearAllState(): void;
@@ -89,7 +95,8 @@ export class StateManager {
   private statesMap: Map<string, AgentState> = new Map();
   private messageHistoryMap: Map<string, Message[]> = new Map();
   private readFileTimestampsMap: Map<string, Record<string, number>> = new Map();
-  private todosMap: Map<string, TodoItemWithId[]> = new Map();
+  private todosMap: Map<string, TodoItem[]> = new Map();
+  private todoTasksMap: Map<string, TodoTask[]> = new Map();
 
   // === 共享状态 ===
   private sessionId: string | null = null;
@@ -201,14 +208,14 @@ export class StateManager {
   /**
    * 获取 todos 列表
    */
-  getTodos(agentId: string = MAIN_AGENT_ID): TodoItemWithId[] {
+  getTodos(agentId: string = MAIN_AGENT_ID): TodoItem[] {
     return this.todosMap.get(agentId) || [];
   }
 
   /**
    * 设置 todos 列表
    */
-  setTodos(todos: TodoItemWithId[], agentId: string = MAIN_AGENT_ID): void {
+  setTodos(todos: TodoItem[], agentId: string = MAIN_AGENT_ID): void {
     this.todosMap.set(agentId, todos);
   }
 
@@ -226,7 +233,7 @@ export class StateManager {
    * 智能更新 todos 列表
    * 如果传入的 todos 都有 id 且是现有 todos 的子集，则进行子集更新，否则进行完全替换
    */
-  updateTodosIntelligently(newTodos: TodoItemWithId[], agentId: string = MAIN_AGENT_ID): void {
+  updateTodosIntelligently(newTodos: TodoItem[], agentId: string = MAIN_AGENT_ID): void {
     const currentTodos = this.todosMap.get(agentId) || [];
 
     if (newTodos.length === 0) {
@@ -271,9 +278,188 @@ export class StateManager {
   /**
    * 发送 todos 更新事件
    */
-  private emitTodosUpdateEvent(todos: TodoItemWithId[]): void {
+  private emitTodosUpdateEvent(todos: TodoItem[]): void {
     const eventBus = getEventBus();
     eventBus.emit('todos:update', todos);
+  }
+
+  // ============================================================
+  // TodoTask CRUD（按代理隔离）
+  // ============================================================
+
+  private getTodoTasks(agentId: string): TodoTask[] {
+    let tasks = this.todoTasksMap.get(agentId);
+    if (!tasks) {
+      tasks = [];
+      this.todoTasksMap.set(agentId, tasks);
+    }
+    return tasks;
+  }
+
+  createTodoTask(agentId: string, task: Omit<TodoTask, 'id' | 'createdAt' | 'updatedAt'>): string {
+    const tasks = this.getTodoTasks(agentId);
+    // 递增数字编号：取当前最大 id + 1
+    const maxId = tasks.reduce((max, t) => Math.max(max, parseInt(t.id, 10) || 0), 0);
+    const id = String(maxId + 1);
+    const now = Date.now();
+    const newTask: TodoTask = {
+      ...task,
+      blocks: task.blocks ?? [],
+      blockedBy: task.blockedBy ?? [],
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    tasks.push(newTask);
+    logInfo(`[${agentId}] TodoTask created: ${id} "${task.subject}"`);
+    this.syncTodoTasksToTodos(agentId);
+    return id;
+  }
+
+  getTodoTask(agentId: string, taskId: string): TodoTask | undefined {
+    return this.getTodoTasks(agentId).find(t => t.id === taskId);
+  }
+
+  listTodoTasks(agentId: string): TodoTask[] {
+    return this.getTodoTasks(agentId);
+  }
+
+  updateTodoTask(
+    agentId: string,
+    taskId: string,
+    updates: Partial<Pick<TodoTask, 'subject' | 'description' | 'status' | 'activeForm' | 'metadata'>>,
+  ): TodoTask | undefined {
+    const tasks = this.getTodoTasks(agentId);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return undefined;
+
+    if (updates.subject !== undefined) task.subject = updates.subject;
+    if (updates.description !== undefined) task.description = updates.description;
+    if (updates.status !== undefined) task.status = updates.status;
+    if (updates.activeForm !== undefined) task.activeForm = updates.activeForm;
+    if (updates.metadata !== undefined) {
+      const merged = { ...(task.metadata ?? {}) };
+      for (const [key, value] of Object.entries(updates.metadata)) {
+        if (value === null) {
+          delete merged[key];
+        } else {
+          merged[key] = value;
+        }
+      }
+      task.metadata = merged;
+    }
+    task.updatedAt = Date.now();
+    logInfo(`[${agentId}] TodoTask updated: ${taskId} fields=[${Object.keys(updates).join(',')}]`);
+    this.syncTodoTasksToTodos(agentId);
+    return task;
+  }
+
+  deleteTodoTask(agentId: string, taskId: string): boolean {
+    const tasks = this.getTodoTasks(agentId);
+    const idx = tasks.findIndex(t => t.id === taskId);
+    if (idx === -1) return false;
+    tasks.splice(idx, 1);
+    // 清理其他任务中对被删任务的引用
+    for (const t of tasks) {
+      t.blocks = t.blocks.filter(id => id !== taskId);
+      t.blockedBy = t.blockedBy.filter(id => id !== taskId);
+    }
+    logInfo(`[${agentId}] TodoTask deleted: ${taskId}`);
+    this.syncTodoTasksToTodos(agentId);
+    return true;
+  }
+
+  /**
+   * 建立阻塞关系：fromId 阻塞 toId（toId 需等待 fromId 完成）
+   * 双向写入保持一致性
+   */
+  blockTask(agentId: string, fromId: string, toId: string): boolean {
+    const tasks = this.getTodoTasks(agentId);
+    const fromTask = tasks.find(t => t.id === fromId);
+    const toTask = tasks.find(t => t.id === toId);
+    if (!fromTask || !toTask) return false;
+
+    // 去重追加
+    if (!fromTask.blocks.includes(toId)) {
+      fromTask.blocks.push(toId);
+      fromTask.updatedAt = Date.now();
+    }
+    if (!toTask.blockedBy.includes(fromId)) {
+      toTask.blockedBy.push(fromId);
+      toTask.updatedAt = Date.now();
+    }
+    logInfo(`[${agentId}] TodoTask block: #${fromId} blocks #${toId}`);
+    this.syncTodoTasksToTodos(agentId);
+    return true;
+  }
+
+  /**
+   * 从持久化数据恢复 TodoTask 列表（主代理）
+   */
+  restoreTodoTasks(tasks: TodoTask[]): void {
+    // 兼容旧数据：补充 blocks/blockedBy 默认值
+    const normalized = tasks.map(t => ({
+      ...t,
+      blocks: t.blocks ?? [],
+      blockedBy: t.blockedBy ?? [],
+    }));
+    this.todoTasksMap.set(MAIN_AGENT_ID, normalized);
+    logInfo(`TodoTasks restored: ${tasks.length} 项`);
+  }
+
+  /**
+   * 从旧版 TodoItem 格式恢复为 TodoTask（兼容旧历史数据）
+   */
+  restoreTodoTasksFromLegacy(todos: TodoItem[]): void {
+    const now = Date.now();
+    const tasks: TodoTask[] = todos.map((todo, index) => ({
+      id: todo.id || crypto.randomBytes(4).toString('hex'),
+      subject: todo.content,
+      description: todo.content,
+      status: todo.status as TodoTaskStatus,
+      activeForm: todo.activeForm || todo.content,
+      blocks: [],
+      blockedBy: [],
+      createdAt: now,
+      updatedAt: now,
+    }));
+    this.todoTasksMap.set(MAIN_AGENT_ID, tasks);
+    logInfo(`TodoTasks restored from legacy todos: ${tasks.length} 项`);
+  }
+
+  /**
+   * 将 TodoTask 列表同步到 todosMap 并触发 UI 更新事件
+   */
+  private syncTodoTasksToTodos(agentId: string): void {
+    const tasks = this.getTodoTasks(agentId);
+
+    // 排序：completed > in_progress > pending；pending 中被阻塞的排最后
+    const statusOrder: Record<string, number> = { completed: 0, in_progress: 1, pending: 2 };
+    const completedIds = new Set(tasks.filter(t => t.status === 'completed').map(t => t.id));
+
+    const sorted = [...tasks].sort((a, b) => {
+      const oa = statusOrder[a.status] ?? 3;
+      const ob = statusOrder[b.status] ?? 3;
+      if (oa !== ob) return oa - ob;
+      // 同为 pending 时，被阻塞（且阻塞者未完成）的排后面
+      if (a.status === 'pending' && b.status === 'pending') {
+        const aBlocked = a.blockedBy.some(id => !completedIds.has(id));
+        const bBlocked = b.blockedBy.some(id => !completedIds.has(id));
+        if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
+      }
+      return 0;
+    });
+
+    const todos: TodoItem[] = sorted.map(t => ({
+      id: t.id,
+      content: t.subject,
+      status: t.status,
+      activeForm: t.activeForm || t.subject,
+    }));
+    this.todosMap.set(agentId, todos);
+    if (agentId === MAIN_AGENT_ID) {
+      this.emitTodosUpdateEvent(todos);
+    }
   }
 
   // ============================================================
@@ -406,6 +592,7 @@ export class StateManager {
     this.messageHistoryMap.clear();
     this.readFileTimestampsMap.clear();
     this.todosMap.clear();
+    this.todoTasksMap.clear();
 
     // 重置共享状态
     this.currentAbortController = null;
@@ -426,6 +613,7 @@ export class StateManager {
       this.messageHistoryMap.delete(agentId);
       this.readFileTimestampsMap.delete(agentId);
       this.todosMap.delete(agentId);
+      this.todoTasksMap.delete(agentId);
       logInfo(`[${agentId}] 所有隔离状态已清理`);
     }
   }
@@ -437,10 +625,11 @@ export class StateManager {
     try {
       const messageHistory = this.getMessageHistory();
       const todos = this.getTodos();
+      const todoTasks = this.listTodoTasks(MAIN_AGENT_ID);
       const readFileTimestamps = this.getReadFileTimestamps(MAIN_AGENT_ID);
       const workingDir = getConfManager().getCoreConfig()?.workingDir;
       if (this.sessionId && messageHistory.length > 0) {
-        await saveHistory(this.sessionId, messageHistory, todos, workingDir, readFileTimestamps);
+        await saveHistory(this.sessionId, messageHistory, todos, workingDir, readFileTimestamps, todoTasks);
         // logInfo(`saveHistory: ${JSON.stringify(messageHistory, null, 2)}`)
 
         logInfo(`会话历史已保存: ${this.sessionId}`);
@@ -498,8 +687,8 @@ export class StateManager {
     return {
       // Todos 管理
       getTodos: () => this.getTodos(agentId),
-      setTodos: (todos: TodoItemWithId[]) => this.setTodos(todos, agentId),
-      updateTodosIntelligently: (todos: TodoItemWithId[]) => this.updateTodosIntelligently(todos, agentId),
+      setTodos: (todos: TodoItem[]) => this.setTodos(todos, agentId),
+      updateTodosIntelligently: (todos: TodoItem[]) => this.updateTodosIntelligently(todos, agentId),
       clearTodos: () => {
         if (isSubagent) {
           this.clearAgentTodos(agentId);
@@ -524,6 +713,14 @@ export class StateManager {
       // 状态管理
       getCurrentState: () => this.getCurrentState(agentId),
       updateState: (state: SessionState) => this.updateState(state, agentId),
+
+      // TodoTask CRUD
+      createTodoTask: (task) => this.createTodoTask(agentId, task),
+      getTodoTask: (taskId) => this.getTodoTask(agentId, taskId),
+      listTodoTasks: () => this.listTodoTasks(agentId),
+      updateTodoTask: (taskId, updates) => this.updateTodoTask(agentId, taskId, updates),
+      deleteTodoTask: (taskId) => this.deleteTodoTask(agentId, taskId),
+      blockTask: (fromId, toId) => this.blockTask(agentId, fromId, toId),
 
       // 清理
       clearAllState: () => {

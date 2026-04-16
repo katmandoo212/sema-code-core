@@ -17,11 +17,13 @@ import { MemoryConfig } from '../types/memory';
 import { getRuleManager } from '../services/rules/rulesManager';
 import { RuleConfig } from '../types/rule';
 import { getTaskManager } from '../manager/TaskManager';
+import { getCronManager } from '../manager/CronManager';
 import { TaskListItem } from '../types/task';
+import { CronTask } from '../types/cron';
 import { SemaEngine } from './SemaEngine';
 import { getConfManager } from '../manager/ConfManager';
 import { getModelManager } from '../manager/ModelManager';
-import { getToolInfos } from '../tools/base/tools';
+import { getAllBuiltinToolInfos } from '../tools/base/tools';
 import { resolveAdapter } from '../util/adapter';
 import { logInfo } from '../util/log';
 
@@ -103,7 +105,7 @@ export class SemaCore {
   };
   updateUseTools = (toolNames: string[] | null): void => getConfManager().updateUseTools(toolNames);
   updateAgentMode = (mode: 'Agent' | 'Plan'): void => this.engine.updateAgentMode(mode);
-  getToolInfos = (): ToolInfo[] => getToolInfos();
+  getToolInfos = (): ToolInfo[] => getAllBuiltinToolInfos();
 
   // ==================== 工具API ====================
   // 独立的工具函数，不依赖会话状态
@@ -167,13 +169,20 @@ export class SemaCore {
   transferAgentToBackground = (taskId: string): boolean => getTaskManager().transferToBackground(taskId);
   transferAllForegroundAgents = (): string[] => getTaskManager().transferAllForeground();
 
+  // ==================== Cron 定时任务管理 ====================
+  getCronTasks = (): Promise<CronTask[]> => getCronManager().getTaskList();
+  refreshCronTasks = (): CronTask[] => getCronManager().refresh();
+  deleteCronTask = (id: string): boolean => getCronManager().deleteTask(id);
+  enableCronTask = (id: string): boolean => getCronManager().enableTask(id);
+  disableCronTask = (id: string): boolean => getCronManager().disableTask(id);
+
   // ==================== 资源管理 ====================
   dispose = async () => {
+    getCronManager().dispose();
     getTaskManager().dispose();
     getPluginsManager().dispose();
     getMemoryManager().dispose();
     getRuleManager().dispose();
     this.engine.dispose();
   };
-
 }

@@ -7,7 +7,7 @@ import { loadHistory } from '../util/history';
 import { detectTopicInBackground } from '../util/topic';
 import { processFileReferences } from '../util/fileReference';
 import { createUserMessage, buildAdditionalReminders } from '../util/message';
-import { assembleTools } from '../util/assembleTools';
+import { getAvailableTools } from '../tools/base/tools';
 import { takeNextBatch } from '../util/inputQueue';
 import { formatSystemPrompt } from '../services/agents/genSystemPrompt';
 import { getConfManager } from '../manager/ConfManager';
@@ -20,6 +20,7 @@ import type { AgentContext } from '../types/agent'
 import { getStateManager, MAIN_AGENT_ID, PendingUserInput } from '../manager/StateManager';
 import { handleCommand } from '../services/commands/runCommand';
 import { getTaskManager } from '../manager/TaskManager';
+import { getCronManager } from '../manager/CronManager';
 import { handleBtw } from '../util/btw';
 
 
@@ -42,6 +43,11 @@ export class SemaEngine {
   constructor() {
     // 注入后台任务通知回调：任务完成后将通知注入用户输入队列
     getTaskManager().setNotifyCallback((msg: string) => {
+      this.processUserInput(msg, undefined, true)
+    })
+
+    // 注入 Cron 定时任务通知回调
+    getCronManager().setNotifyCallback((msg: string) => {
       this.processUserInput(msg, undefined, true)
     })
   }
@@ -100,6 +106,10 @@ export class SemaEngine {
 
     // 初始化新会话
     await this.initialize(finalSessionId);
+
+    // 清空非持久化的定时任务，持久化任务保留
+    getCronManager().clearNonDurableTasks();
+
     const coreConfig = getConfManager().getCoreConfig();
     const workingDir = coreConfig?.workingDir;
     logInfo(`[DEBUG] loadHistory - workingDir: ${workingDir}, coreConfig: ${JSON.stringify(coreConfig)}`);
@@ -110,6 +120,13 @@ export class SemaEngine {
     // 初始化时跳过自动保存，避免把刚读取的数据重复写回文件
     mainAgentState.setMessageHistory(historyData.messages, true);
     mainAgentState.setTodos(historyData.todos);
+    if (historyData.todoTasks && historyData.todoTasks.length > 0) {
+      // 新格式：直接恢复完整 TodoTask 数据
+      stateManager.restoreTodoTasks(historyData.todoTasks);
+    } else if (historyData.todos && historyData.todos.length > 0) {
+      // 旧格式兼容：将 TodoItem 转换为 TodoTask
+      stateManager.restoreTodoTasksFromLegacy(historyData.todos);
+    }
     if (historyData.readFileTimestamps) {
       mainAgentState.setReadFileTimestamps(historyData.readFileTimestamps);
     }
@@ -128,7 +145,7 @@ export class SemaEngine {
       historyLoaded: !!sessionId,
       projectInputHistory: projectInputHistory,
       usage: usage,
-      todos: historyData.todos,
+      todos: mainAgentState.getTodos(),
       readFileTimestamps: historyData.readFileTimestamps || {}
     };
 
@@ -207,7 +224,7 @@ export class SemaEngine {
     const agentMode = coreConfig?.agentMode || 'Agent';
 
     // 获取工具集
-    const tools = assembleTools(coreConfig?.useTools, agentMode);
+    const tools = getAvailableTools();
 
     // 构建主代理上下文
     const agentContext: AgentContext = {

@@ -7,6 +7,9 @@ import {
   getURLMarkdownContent,
   MAX_MARKDOWN_LENGTH,
 } from './utils'
+import { getEventBus } from '../../events/EventSystem'
+import type { ToolExecutionChunkData } from '../../events/types'
+import { MAIN_AGENT_ID } from '../../manager/StateManager'
 
 const inputSchema = z.strictObject({
   url: z.string().url().describe('The URL to fetch content from'),
@@ -45,15 +48,16 @@ export const WebFetchTool = {
   },
   genToolResultMessage(data: Output) {
     const sizeKB = (data.bytes / 1024).toFixed(1)
+    const maxContentLength = 5000
     return {
       title: data.url,
-      summary: `Fetched ${data.url} (${sizeKB}KB, HTTP ${data.code})`,
-      content: data.result.slice(0, 200) + (data.result.length > 200 ? '...' : ''),
+      summary: '',
+      content: data.result.slice(0, maxContentLength) + (data.result.length > maxContentLength ? '...' : ''),
     }
   },
   genToolPermission(input: { url: string; prompt: string }) {
     return {
-      title: 'WebFetch',
+      title: '',
       content: input.url,
     }
   },
@@ -69,6 +73,27 @@ export const WebFetchTool = {
     const start = Date.now()
     const { abortController } = agentContext
 
+    const isMainAgent = agentContext.agentId === MAIN_AGENT_ID
+    const timeTag = () => {
+      const now = new Date()
+      const h = String(now.getHours()).padStart(2, '0')
+      const m = String(now.getMinutes()).padStart(2, '0')
+      const s = String(now.getSeconds()).padStart(2, '0')
+      return `[${h}:${m}:${s}]`
+    }
+    const emitChunk = isMainAgent ? (content: string) => {
+      const chunkData: ToolExecutionChunkData = {
+        agentId: agentContext.agentId,
+        toolId: agentContext.currentToolUseID || '',
+        toolName: TOOL_NAME_FOR_PROMPT,
+        title: url,
+        summary: '',
+        content,
+      }
+      getEventBus().emit('tool:execution:chunk', chunkData)
+    } : undefined
+
+    emitChunk?.(`${timeTag()}Fetching content...\n`)
     const response = await getURLMarkdownContent(url, abortController)
 
     // 跨域重定向：通知 LLM 重新请求
@@ -107,6 +132,9 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
     }
 
     const { content, bytes, code, codeText, contentType } = response as FetchedContent
+
+    const sizeKB = (bytes / 1024).toFixed(1)
+    emitChunk?.(`${timeTag()}Fetched ${sizeKB}KB (HTTP ${code}), processing with LLM...\n`)
 
     let result: string
     // 对于小型 markdown 内容直接返回，无需 LLM 处理
