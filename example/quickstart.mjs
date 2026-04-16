@@ -7,14 +7,15 @@ const core = new SemaCore({
   thinking: false
 });
 
-// 配置模型（以 DeepSeek 为例，更多提供商见"新增模型"文档）
+// 配置模型（以 qwen3.6-plus 为例，更多LLM服务商请见"新增模型"文档） 只需要加一次，后面可以注释掉添加模型相关代码
 const modelConfig = {
-  provider: 'deepseek',
-  modelName: 'deepseek-chat',
-  baseURL: 'https://api.deepseek.com/anthropic',
-  apiKey: 'sk-your-api-key', // 替换为你的 API Key
-  maxTokens: 8192,
-  contextLength: 128000
+  "provider": "qwen",
+  "modelName": "qwen3.6-plus",
+  "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "apiKey": "sk-",
+  "maxTokens": 32000,
+  "contextLength": 256000,
+  "adapt": "openai"
 };
 
 const modelId = `${modelConfig.modelName}[${modelConfig.provider}]`;
@@ -65,7 +66,9 @@ async function run() {
     'tool:execution:start', 'tool:execution:complete', 'tool:execution:error', 'tool:permission:request',
     'task:agent:start', 'task:agent:end', 'todos:update', 'session:interrupted'
   ];
-  events.forEach(e => core.on(e, (data) => console.log(gray(`${e}|${JSON.stringify(data)}`))));
+  const MAX_LOG_LEN = 200;
+  const truncate = (s, n = MAX_LOG_LEN) => (s.length > n ? `${s.slice(0, n)}...(${s.length - n} more)` : s);
+  events.forEach(e => core.on(e, (data) => console.log(gray(`${e}|${truncate(JSON.stringify(data))}`))));
 
   // 流式输出
   core.on('message:text:chunk', ({ delta }) => process.stdout.write(delta || ''));
@@ -75,7 +78,7 @@ async function run() {
   core.on('tool:permission:request', async (data) => {
     const answer = await prompt(blue('👤 权限响应 (y=agree / a=allow / n=refuse): '));
     const map = { y: 'agree', a: 'allow', n: 'refuse' };
-    core.respondToToolPermission({ toolName: data.toolName, selected: map[answer.trim()] || 'agree' });
+    core.respondToToolPermission({ toolId: data.toolId, toolName: data.toolName, selected: map[answer.trim()] || 'agree' });
   });
 
   // 对话循环
