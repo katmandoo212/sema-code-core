@@ -40,3 +40,5 @@ my-app
 test-*.ts
 demo-*.ts
 temp-*
+
+remotion/

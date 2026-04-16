@@ -14,6 +14,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/midea-ai/sema-code-core)
 [![npm version](https://img.shields.io/npm/v/sema-core?style=flat-square)](https://www.npmjs.com/package/sema-core)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue?style=flat-square)](https://midea-ai.github.io/sema-code-core)
+[![arXiv](https://img.shields.io/badge/arXiv-2604.11045-b31b1b?style=flat-square)](https://arxiv.org/abs/2604.11045)
 
 **中文** | [English](./README.md)
 
@@ -117,13 +118,3 @@ node test/addModel.test.js
 node test/miniCli.test.js
 ```
 
-
-<details>
-<summary><strong>ripgrep 跨平台打包说明（Mac/Win 兼容）</strong></summary>
-
-```bash
-# 首次打包前，下载双平台 ripgrep 依赖文件
-./download-ripgrep.sh
-```
-
-</details>

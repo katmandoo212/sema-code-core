@@ -10,6 +10,7 @@
 | Bash 执行 | `skipBashExecPermission` | 需要确认 | `'Bash(命令前缀:*)'` 或 `'Bash(完整命令)'` |
 | Skill 调用 | `skipSkillPermission` | 需要确认 | `'Skill(name)'` |
 | MCP 工具 | `skipMCPToolPermission` | 需要确认 | `'mcp__server_tool'` |
+| WebFetch 请求 | `skipWebFetchPermission` | 需要确认 | `'WebFetch(domain)'` |
 
 
 ## 权限检查流程
@@ -41,7 +42,7 @@ skipXxxPermission = true？
                                          ├─ 'agree'      → 本次执行 ✓
                                          ├─ 'allow'      → 执行 ✓ + 持久化权限
                                          │                 （文件编辑：grantGlobalEditPermission；
-                                         │                  Bash/Skill/MCP：写入 allowedTools）
+                                         │                  Bash/Skill/MCP/WebFetch：写入 allowedTools）
                                          ├─ 'refuse'     → 中断 + 返回拒绝原因给 LLM
                                          └─ 其他字符串  → 返回反馈文本给 LLM（不中断）
 ```
@@ -74,6 +75,7 @@ ls, find, grep, head, tail, cat, du, wc, echo, env, printenv
 | `'Bash(git status)'` | 仅允许 `git status` 这一条完整命令 |
 | `'Skill(commit)'` | 允许调用 `commit` Skill |
 | `'mcp__fs_read_file'` | 允许调用特定 MCP 工具 |
+| `'WebFetch(example.com)'` | 允许对 `example.com` 域名的 WebFetch 请求 |
 
 > 文件编辑权限（Edit / Write / NotebookEdit）以会话级 `globalEditPermission` 标志控制，不写入 `allowedTools`。
 

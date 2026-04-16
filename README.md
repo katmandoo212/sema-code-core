@@ -14,6 +14,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/midea-ai/sema-code-core)
 [![npm version](https://img.shields.io/npm/v/sema-core?style=flat-square)](https://www.npmjs.com/package/sema-core)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue?style=flat-square)](https://midea-ai.github.io/sema-code-core)
+[![arXiv](https://img.shields.io/badge/arXiv-2604.11045-b31b1b?style=flat-square)](https://arxiv.org/abs/2604.11045)
 
 [中文](./README_CN.md) | **English**
 
@@ -116,13 +117,3 @@ npm run build
 node test/addModel.test.js
 node test/miniCli.test.js
 ```
-
-<details>
-<summary><strong>ripgrep Cross-Platform Packaging (Mac/Win)</strong></summary>
-
-```bash
-# Before the first package, download the dual-platform ripgrep dependency files
-./download-ripgrep.sh
-```
-
-</details>

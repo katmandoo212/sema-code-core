@@ -111,7 +111,7 @@ const sdkTools = buildTools(filteredTools)
 
 ## 工具分类
 
-### 内置工具（14 个）
+### 内置工具（21 个）
 
 | 工具 | 类型 | isReadOnly | 备注 |
 |------|------|-----------|------|
@@ -121,14 +121,21 @@ const sdkTools = buildTools(filteredTools)
 | [Read](wiki/core-concepts/tool-system/built-in-tools/readtool) | 文件读取 | true | |
 | [Write](wiki/core-concepts/tool-system/built-in-tools/writetool) | 文件写入 | false | |
 | [Edit](wiki/core-concepts/tool-system/built-in-tools/edittool) | 文件编辑 | false | |
-| [NotebookEdit](wiki/core-concepts/tool-system/built-in-tools/notebookedittool) | Notebook 编辑 | false | |
-| [TodoWrite](wiki/core-concepts/tool-system/built-in-tools/todowritetool) | 任务管理 | false | |
+| [WebFetch](wiki/core-concepts/tool-system/built-in-tools/webfetchtool) | 网页抓取 | false | |
 | [Agent](wiki/core-concepts/tool-system/built-in-tools/tasktool) | 子代理创建 | false | `canRunConcurrently`、支持后台任务 |
-| [Skill](wiki/core-concepts/tool-system/built-in-tools/skilltool) | Skill 调用 | false | |
-| [AskUserQuestion](wiki/core-concepts/tool-system/built-in-tools/askuserquestiontool) | 用户交互 | false | |
-| [ExitPlanMode](wiki/core-concepts/tool-system/built-in-tools/exitplanmodetool) | 退出 Plan 模式 | false | |
 | [TaskOutput](wiki/core-concepts/tool-system/built-in-tools/taskoutputtool) | 后台任务输出读取 | true | `supportsInterrupt` |
 | [TaskStop](wiki/core-concepts/tool-system/built-in-tools/taskstoptool) | 后台任务停止 | false | |
+| [Skill](wiki/core-concepts/tool-system/built-in-tools/skilltool) | Skill 调用 | false | |
+| [NotebookEdit](wiki/core-concepts/tool-system/built-in-tools/notebookedittool) | Notebook 编辑 | false | |
+| [AskUserQuestion](wiki/core-concepts/tool-system/built-in-tools/askuserquestiontool) | 用户交互 | false | |
+| [ExitPlanMode](wiki/core-concepts/tool-system/built-in-tools/exitplanmodetool) | 退出 Plan 模式 | false | |
+| [TaskCreate](wiki/core-concepts/tool-system/built-in-tools/taskcreatetool) | 任务创建 | false | `canRunConcurrently` |
+| [TaskGet](wiki/core-concepts/tool-system/built-in-tools/taskgettool) | 任务查询 | true | `canRunConcurrently` |
+| [TaskList](wiki/core-concepts/tool-system/built-in-tools/tasklisttool) | 任务列表 | true | `canRunConcurrently` |
+| [TaskUpdate](wiki/core-concepts/tool-system/built-in-tools/taskupdatetool) | 任务更新 | false | `canRunConcurrently` |
+| [CronCreate](wiki/core-concepts/tool-system/built-in-tools/croncreatetool) | 定时任务创建 | false | `canRunConcurrently`、仅主代理 |
+| [CronDelete](wiki/core-concepts/tool-system/built-in-tools/crondeletetool) | 定时任务删除 | false | `canRunConcurrently` |
+| [CronList](wiki/core-concepts/tool-system/built-in-tools/cronlisttool) | 定时任务列表 | true | `canRunConcurrently` |
 
 ### MCP 工具
 
