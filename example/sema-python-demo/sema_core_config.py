@@ -36,6 +36,9 @@ class SemaCoreConfig:
     skip_mcp_tool_permission: Optional[bool] = None
     """ 跳过 MCP 工具权限检查，默认 False """
 
+    skip_web_fetch_permission: Optional[bool] = None
+    """ 跳过 WebFetch 权限检查，默认 False """
+
     enable_llm_cache: Optional[bool] = None
     """ 开启 LLM 缓存，默认 False，建议只在重复测试时使用 """
 
@@ -44,6 +47,15 @@ class SemaCoreConfig:
 
     agent_mode: Optional[str] = None
     """ Agent 模式：Agent 或 Plan，默认 Agent """
+
+    disable_topic_detection: Optional[bool] = None
+    """ 是否禁用话题检测，默认 False """
+
+    enable_claude_code_compat: Optional[bool] = None
+    """ 是否兼容 ClaudeCode 生态，默认 True """
+
+    disable_background_tasks: Optional[bool] = None
+    """ 是否禁止后台任务，默认 False """
 
     def to_dict(self) -> dict:
         mapping = {
@@ -57,8 +69,12 @@ class SemaCoreConfig:
             "skipBashExecPermission":  self.skip_bash_exec_permission,
             "skipSkillPermission":     self.skip_skill_permission,
             "skipMCPToolPermission":   self.skip_mcp_tool_permission,
+            "skipWebFetchPermission":  self.skip_web_fetch_permission,
             "enableLLMCache":          self.enable_llm_cache,
             "useTools":                self.use_tools,
             "agentMode":               self.agent_mode,
+            "disableTopicDetection":   self.disable_topic_detection,
+            "enableClaudeCodeCompat":  self.enable_claude_code_compat,
+            "disableBackgroundTasks":  self.disable_background_tasks,
         }
         return {k: v for k, v in mapping.items() if v is not None}

@@ -127,19 +127,19 @@ class SemaCoreClient:
         """中断当前处理"""
         return await self.send_command("session.interrupt")
 
-    async def respond_to_permission(self, tool_name: str, selected: str) -> BridgeEvent:
+    async def respond_to_permission(self, tool_id: str, tool_name: str, selected: str) -> BridgeEvent:
         """响应工具权限请求"""
         return await self.send_command(
-            "permission.respond", {"toolName": tool_name, "selected": selected}
+            "permission.respond", {"toolId": tool_id, "toolName": tool_name, "selected": selected}
         )
 
-    async def respond_to_question(self, id: str, answer: str) -> BridgeEvent:
+    async def respond_to_question(self, agent_id: str, answers: dict[str, str]) -> BridgeEvent:
         """响应问答请求"""
-        return await self.send_command("question.respond", {"id": id, "answer": answer})
+        return await self.send_command("question.respond", {"agentId": agent_id, "answers": answers})
 
-    async def respond_to_plan_exit(self, id: str, approved: bool) -> BridgeEvent:
+    async def respond_to_plan_exit(self, agent_id: str, selected: str) -> BridgeEvent:
         """响应计划退出请求"""
-        return await self.send_command("plan.respond", {"id": id, "approved": approved})
+        return await self.send_command("plan.respond", {"agentId": agent_id, "selected": selected})
 
     async def add_model(self, config: dict, skip_validation: bool = False) -> BridgeEvent:
         """添加模型"""
@@ -151,17 +151,21 @@ class SemaCoreClient:
         """应用任务模型配置（main / quick 使用的模型 ID）"""
         return await self.send_command("model.applyTask", {"main": main, "quick": quick})
 
+    async def del_model(self, model_name: str) -> BridgeEvent:
+        """删除模型"""
+        return await self.send_command("model.del", {"modelName": model_name})
+
     async def switch_model(self, model_name: str) -> BridgeEvent:
         """切换模型"""
         return await self.send_command("model.switch", {"modelName": model_name})
 
-    async def set_agent_mode(self, mode: str) -> BridgeEvent:
-        """设置代理模式（Agent / Plan）"""
-        return await self.send_command("agent.setMode", {"mode": mode})
-
     async def get_model_data(self) -> BridgeEvent:
         """获取模型信息"""
         return await self.send_command("model.getData")
+
+    async def set_agent_mode(self, mode: str) -> BridgeEvent:
+        """设置代理模式（Agent / Plan）"""
+        return await self.send_command("config.updateAgentMode", {"mode": mode})
 
     async def update_config(self, config: dict) -> BridgeEvent:
         """更新运行时配置（会话创建后也可调用）"""

@@ -1,13 +1,15 @@
 import { SemaCore } from 'sema-core';
 
 const FORWARD_EVENTS = [
-  'session:ready', 'session:error', 'session:interrupted',
+  'session:ready', 'session:error', 'session:interrupted', 'session:cleared',
   'state:update',
+  'input:received', 'input:processing',
   'message:text:chunk', 'message:thinking:chunk', 'message:complete',
-  'tool:permission:request', 'tool:execution:start', 'tool:execution:complete', 'tool:execution:error',
-  'task:agent:start', 'task:agent:end',
+  'tool:permission:request', 'tool:execution:complete', 'tool:execution:chunk', 'tool:execution:error',
+  'task:agent:start', 'task:agent:end', 'task:start', 'task:end',
   'todos:update', 'topic:update',
   'ask:question:request', 'plan:exit:request',
+  'conversation:usage', 'file:reference',
 ];
 
 interface GrpcStream {
@@ -60,8 +62,11 @@ export class BridgeSession {
         case 'plan.respond':       this.core.respondToPlanExit(payload); break;
         case 'model.add':          await this.core.addModel(payload.config, payload.skipValidation); break;
         case 'model.applyTask':    await this.core.applyTaskModel(payload); break;
+        case 'model.del':          await this.core.delModel(payload.modelName); break;
         case 'model.switch':       await this.core.switchModel(payload.modelName); break;
+        case 'model.getData':      { const data = await this.core.getModelData(); this.push('ack', data, id); return; }
         case 'config.update':      this.core.updateCoreConfig(payload); break;
+        case 'config.updateAgentMode': this.core.updateAgentMode(payload.mode); break;
         default: this.push('error', { message: `Unknown action: ${action}` }, id); return;
       }
       this.push('ack', { action }, id);

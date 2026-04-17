@@ -62,13 +62,16 @@ service SemaBridge {
 | `session.input`     | 发送用户消息，`{ content, orgContent? }`            |
 | `session.interrupt` | 中断当前会话                                       |
 | `session.dispose`   | 销毁会话                                           |
-| `permission.respond`| 回应工具权限请求，`{ toolName, selected }`           |
-| `question.respond`  | 回应 ask:question 请求                             |
-| `plan.respond`      | 回应计划退出请求                                    |
+| `permission.respond`| 回应工具权限请求，`{ toolId, toolName, selected }`    |
+| `question.respond`  | 回应问答请求，`{ agentId, answers }`                |
+| `plan.respond`      | 回应计划退出请求，`{ agentId, selected }`            |
 | `model.add`         | 添加模型，`{ config, skipValidation? }`             |
+| `model.del`         | 删除模型，`{ modelName }`                          |
 | `model.applyTask`   | 应用任务模型，`{ main, quick }`                     |
 | `model.switch`      | 切换模型，`{ modelName }`                          |
+| `model.getData`     | 获取模型信息                                       |
 | `config.update`     | 更新核心配置                                       |
+| `config.updateAgentMode` | 切换代理模式，`{ mode }`                       |
 
 ### 服务端推送的事件（Event）
 
@@ -77,19 +80,27 @@ service SemaBridge {
 | `session:ready`            | 会话已就绪，含 `sessionId` |
 | `session:error`            | 会话错误           |
 | `session:interrupted`      | 会话已中断          |
-| `state:update`             | 状态变化（`idle` / `running`） |
+| `session:cleared`          | 会话已清空          |
+| `state:update`             | 状态变化（`idle` / `processing`） |
+| `input:received`           | 用户输入已接收       |
+| `input:processing`         | 用户输入开始处理     |
 | `message:text:chunk`       | AI 文本流式输出片段  |
 | `message:thinking:chunk`   | AI 思考流式输出片段  |
 | `message:complete`         | 本轮消息输出完成     |
 | `tool:permission:request`  | 请求工具执行权限     |
 | `tool:execution:complete`  | 工具执行完成        |
+| `tool:execution:chunk`     | 工具执行中间态      |
 | `tool:execution:error`     | 工具执行错误        |
 | `task:agent:start`         | 子 Agent 启动      |
 | `task:agent:end`           | 子 Agent 结束      |
+| `task:start`               | 后台任务启动        |
+| `task:end`                 | 后台任务结束        |
 | `todos:update`             | 待办事项更新        |
 | `topic:update`             | 会话主题更新        |
 | `ask:question:request`     | AI 发起问题询问     |
 | `plan:exit:request`        | AI 请求退出计划模式  |
+| `conversation:usage`       | Token 使用统计     |
+| `file:reference`           | 文件引用信息        |
 | `ack`                      | 指令确认（含 `cmd_id`）|
 | `error`                    | 错误事件（含 `cmd_id`）|
 
@@ -105,12 +116,6 @@ cd sema-grpc
 npm install
 npm run build
 npm start
-```
-
-开发模式（无需构建）：
-
-```bash
-npx ts-node src/server.ts
 ```
 
 ## 环境变量

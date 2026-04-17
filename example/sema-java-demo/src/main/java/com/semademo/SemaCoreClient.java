@@ -151,18 +151,18 @@ public class SemaCoreClient implements AutoCloseable {
     }
 
     /** 响应工具权限请求 */
-    public CompletableFuture<BridgeEvent> respondToPermissionAsync(String toolName, String selected) {
-        return sendCommandAsync("permission.respond", Map.of("toolName", toolName, "selected", selected));
+    public CompletableFuture<BridgeEvent> respondToPermissionAsync(String toolId, String toolName, String selected) {
+        return sendCommandAsync("permission.respond", Map.of("toolId", toolId, "toolName", toolName, "selected", selected));
     }
 
     /** 响应问答请求 */
-    public CompletableFuture<BridgeEvent> respondToQuestionAsync(String id, String answer) {
-        return sendCommandAsync("question.respond", Map.of("id", id, "answer", answer));
+    public CompletableFuture<BridgeEvent> respondToQuestionAsync(String agentId, Map<String, String> answers) {
+        return sendCommandAsync("question.respond", Map.of("agentId", agentId, "answers", answers));
     }
 
     /** 响应计划退出请求 */
-    public CompletableFuture<BridgeEvent> respondToPlanExitAsync(String id, boolean approved) {
-        return sendCommandAsync("plan.respond", Map.of("id", id, "approved", approved));
+    public CompletableFuture<BridgeEvent> respondToPlanExitAsync(String agentId, String selected) {
+        return sendCommandAsync("plan.respond", Map.of("agentId", agentId, "selected", selected));
     }
 
     /** 添加模型 */
@@ -175,19 +175,24 @@ public class SemaCoreClient implements AutoCloseable {
         return sendCommandAsync("model.applyTask", Map.of("main", main, "quick", quick));
     }
 
+    /** 删除模型 */
+    public CompletableFuture<BridgeEvent> delModelAsync(String modelName) {
+        return sendCommandAsync("model.del", Map.of("modelName", modelName));
+    }
+
     /** 切换模型 */
     public CompletableFuture<BridgeEvent> switchModelAsync(String modelName) {
         return sendCommandAsync("model.switch", Map.of("modelName", modelName));
     }
 
-    /** 设置代理模式（Agent / Plan） */
-    public CompletableFuture<BridgeEvent> setAgentModeAsync(String mode) {
-        return sendCommandAsync("agent.setMode", Map.of("mode", mode));
-    }
-
     /** 获取模型信息 */
     public CompletableFuture<BridgeEvent> getModelDataAsync() {
         return sendCommandAsync("model.getData");
+    }
+
+    /** 设置代理模式（Agent / Plan） */
+    public CompletableFuture<BridgeEvent> setAgentModeAsync(String mode) {
+        return sendCommandAsync("config.updateAgentMode", Map.of("mode", mode));
     }
 
     /**

@@ -113,11 +113,12 @@ async def main() -> None:
 
     # ── 权限交互（对应 quickstart.mjs 的 tool:permission:request 处理）─
     async def handle_permission(data):
+        tool_id = data.get("toolId", "") if data else ""
         tool_name = data.get("toolName", "") if data else ""
         await stop_esc()  # 退出 raw mode，确保 readline 可正常接收回车
         answer = (await ainput(blue("👤 权限响应 (y=agree / a=allow / n=refuse): "))).strip()
         selected = {"y": "agree", "a": "allow", "n": "refuse"}.get(answer, "agree")
-        await client.respond_to_permission(tool_name, selected)
+        await client.respond_to_permission(tool_id, tool_name, selected)
         await start_esc()  # 重新启动 ESC 监听
 
     client.on("tool:permission:request",
@@ -164,23 +165,28 @@ async def main() -> None:
         # ── 核心配置（对应 quickstart.mjs 的 new SemaCore({...}) 选项）──────
         await client.init_core(
             SemaCoreConfig(
-                working_dir="/path/to/your/project",  # Target repository path for the Agent to operate on
+                working_dir="/path/to/your/project",  # Agent 将操作的目标代码仓库路径
                 log_level="none",
                 thinking=False,
+                enable_claude_code_compat=False,
+                disable_background_tasks=True,
+                disable_topic_detection=True,
             )
         )
 
-        # ── 配置模型（对应 quickstart.mjs 的 addModel + applyTaskModel）──────
+        # ── 配置模型（以 qwen3.6-plus 为例，更多LLM服务商请见"新增模型"文档）──────
+        # 只需要加一次，后面可以注释掉添加模型相关代码
         model_config = {
-            "provider":      "deepseek",
-            "modelName":     "deepseek-chat",
-            "baseURL":       "https://api.deepseek.com/anthropic",
-            "apiKey":        "sk-your-api-key",  # Replace with your API Key
-            "maxTokens":     8192,
-            "contextLength": 128000,
+            "provider":      "qwen",
+            "modelName":     "qwen3.6-plus",
+            "baseURL":       "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "apiKey":        "sk-",
+            "maxTokens":     32000,
+            "contextLength": 256000,
+            "adapt":         "openai",
         }
         await client.add_model(model_config, skip_validation=False)
-        model_id = "deepseek-chat[deepseek]"
+        model_id = "qwen3.6-plus[qwen]"
         await client.apply_task_model(model_id, model_id)
         print(f"Model configured: {model_id}\n")
 

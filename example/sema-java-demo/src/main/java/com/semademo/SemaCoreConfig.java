@@ -53,6 +53,10 @@ public class SemaCoreConfig {
     @JsonProperty("enableLLMCache")
     public Boolean enableLLMCache;
 
+    /** 跳过 WebFetch 权限检查，默认 false */
+    @JsonProperty("skipWebFetchPermission")
+    public Boolean skipWebFetchPermission;
+
     /** 限定使用的工具列表，null 表示使用所有工具 */
     @JsonProperty("useTools")
     public String[] useTools;
@@ -60,6 +64,18 @@ public class SemaCoreConfig {
     /** Agent 模式：Agent 或 Plan，默认 Agent */
     @JsonProperty("agentMode")
     public String agentMode;
+
+    /** 是否禁用话题检测，默认 false */
+    @JsonProperty("disableTopicDetection")
+    public Boolean disableTopicDetection;
+
+    /** 是否兼容 ClaudeCode 生态，默认 true */
+    @JsonProperty("enableClaudeCodeCompat")
+    public Boolean enableClaudeCodeCompat;
+
+    /** 是否禁止后台任务，默认 false */
+    @JsonProperty("disableBackgroundTasks")
+    public Boolean disableBackgroundTasks;
 
     public static Builder builder() {
         return new Builder();
@@ -78,9 +94,13 @@ public class SemaCoreConfig {
         public Builder skipBashExecPermission(Boolean v) { c.skipBashExecPermission = v;  return this; }
         public Builder skipSkillPermission(Boolean v)    { c.skipSkillPermission = v;     return this; }
         public Builder skipMCPToolPermission(Boolean v)  { c.skipMCPToolPermission = v;   return this; }
+        public Builder skipWebFetchPermission(Boolean v) { c.skipWebFetchPermission = v;  return this; }
         public Builder enableLLMCache(Boolean v)         { c.enableLLMCache = v;          return this; }
         public Builder useTools(String... v)             { c.useTools = v;                return this; }
         public Builder agentMode(String v)               { c.agentMode = v;               return this; }
+        public Builder disableTopicDetection(Boolean v)  { c.disableTopicDetection = v;   return this; }
+        public Builder enableClaudeCodeCompat(Boolean v) { c.enableClaudeCodeCompat = v;  return this; }
+        public Builder disableBackgroundTasks(Boolean v) { c.disableBackgroundTasks = v;  return this; }
 
         public SemaCoreConfig build() { return c; }
     }

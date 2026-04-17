@@ -43,6 +43,7 @@ public class Main {
 
             // ── 权限交互（覆盖日志处理器，追加用户确认逻辑）─────────────────
             client.on("tool:permission:request", data -> {
+                String toolId = data != null && data.has("toolId") ? data.get("toolId").asText() : "";
                 String toolName = data != null && data.has("toolName") ? data.get("toolName").asText() : "";
                 System.out.print(blue("👤 权限响应 (y=agree / a=allow / n=refuse): "));
                 String answer = scanner.nextLine().trim();
@@ -51,23 +52,27 @@ public class Main {
                     case "n" -> "refuse";
                     default  -> "agree";
                 };
-                client.respondToPermissionAsync(toolName, selected);
+                client.respondToPermissionAsync(toolId, toolName, selected);
             });
 
             // ── 问答请求 ──────────────────────────────────────────────────
             client.on("ask:question:request", data -> {
-                String id       = data != null && data.has("id")       ? data.get("id").asText()       : "";
-                String question = data != null && data.has("question") ? data.get("question").asText() : "";
-                System.out.println("[Question] " + question);
+                String agentId = data != null && data.has("agentId") ? data.get("agentId").asText() : "";
+                System.out.println("[Question] " + (data != null ? data.get("questions") : ""));
                 System.out.print("Your answer: ");
-                client.respondToQuestionAsync(id, scanner.nextLine());
+                String input = scanner.nextLine();
+                String firstQuestion = "";
+                if (data != null && data.has("questions") && data.get("questions").isArray() && data.get("questions").size() > 0) {
+                    firstQuestion = data.get("questions").get(0).has("question") ? data.get("questions").get(0).get("question").asText() : "";
+                }
+                client.respondToQuestionAsync(agentId, Map.of(firstQuestion, input));
             });
 
             // ── Plan 退出请求 ─────────────────────────────────────────────
             client.on("plan:exit:request", data -> {
                 System.out.println("[Plan] Exit plan mode — approving");
-                String id = data != null && data.has("id") ? data.get("id").asText() : "";
-                client.respondToPlanExitAsync(id, true);
+                String agentId = data != null && data.has("agentId") ? data.get("agentId").asText() : "";
+                client.respondToPlanExitAsync(agentId, "startEditing");
             });
 
             // ── 连接 ──────────────────────────────────────────────────────
@@ -82,9 +87,12 @@ public class Main {
 
             // ── 核心配置（对应 quickstart.mjs 的 new SemaCore({...}) 选项）──────
             client.initCoreAsync(SemaCoreConfig.builder()
-                    .workingDir("/path/to/your/project") // Target repository path for the Agent to operate on
+                    .workingDir("/path/to/your/project") // Agent 将操作的目标代码仓库路径
                     .logLevel("none")
                     .thinking(false)
+                    .enableClaudeCodeCompat(false)
+                    .disableBackgroundTasks(true)
+                    .disableTopicDetection(true)
                     // 按需启用其他选项：
                     // .skipFileEditPermission(true)
                     // .skipBashExecPermission(true)
@@ -93,17 +101,19 @@ public class Main {
                     .build()
             ).get(15, TimeUnit.SECONDS);
 
-            // ── 配置模型（对应 quickstart.mjs 的 addModel + applyTaskModel）──────
+            // ── 配置模型（以 qwen3.6-plus 为例，更多LLM服务商请见"新增模型"文档）──────
+            // 只需要加一次，后面可以注释掉添加模型相关代码
             Map<String, Object> modelConfig = new LinkedHashMap<>();
-            modelConfig.put("provider",      "deepseek");
-            modelConfig.put("modelName",     "deepseek-chat");
-            modelConfig.put("baseURL",       "https://api.deepseek.com/anthropic");
-            modelConfig.put("apiKey",        "sk-your-api-key");  // Replace with your API Key
-            modelConfig.put("maxTokens",     8192);
-            modelConfig.put("contextLength", 128000);
+            modelConfig.put("provider",      "qwen");
+            modelConfig.put("modelName",     "qwen3.6-plus");
+            modelConfig.put("baseURL",       "https://dashscope.aliyuncs.com/compatible-mode/v1");
+            modelConfig.put("apiKey",        "sk-");
+            modelConfig.put("maxTokens",     32000);
+            modelConfig.put("contextLength", 256000);
+            modelConfig.put("adapt",         "openai");
 
             client.addModelAsync(modelConfig, false).get(15, TimeUnit.SECONDS);
-            String modelId = "deepseek-chat[deepseek]";
+            String modelId = "qwen3.6-plus[qwen]";
             client.applyTaskModelAsync(modelId, modelId).get(15, TimeUnit.SECONDS);
             System.out.println("Model configured: " + modelId + "\n");
 

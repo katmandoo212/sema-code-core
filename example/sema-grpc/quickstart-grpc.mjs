@@ -23,13 +23,16 @@ const GRPC_HOST = 'localhost:3766';
 
 const WORKING_DIR = '/path/to/your/project'; // Agent 将操作的目标代码仓库路径
 
+// 配置模型（以 qwen3.6-plus 为例，更多LLM服务商请见"新增模型"文档）
+// 只需要加一次，后面可以注释掉添加模型相关代码
 const MODEL_CONFIG = {
-  provider: 'deepseek',
-  modelName: 'deepseek-chat',
-  baseURL: 'https://api.deepseek.com/anthropic',
-  apiKey: 'sk-your-api-key', // 替换为你的 API Key
-  maxTokens: 8192,
-  contextLength: 128000,
+  provider: 'qwen',
+  modelName: 'qwen3.6-plus',
+  baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  apiKey: 'sk-',
+  maxTokens: 32000,
+  contextLength: 256000,
+  adapt: 'openai',
 };
 
 // ── Proto 加载 ───────────────────────────────────────────────────────────────
@@ -205,6 +208,7 @@ async function run() {
     const answer = await prompt(blue('👤 权限响应 (y=agree / a=allow / n=refuse): '));
     const map = { y: 'agree', a: 'allow', n: 'refuse' };
     send('permission.respond', {
+      toolId: data?.toolId,
       toolName: data?.toolName,
       selected: map[answer.trim()] || 'agree',
     });
@@ -226,7 +230,7 @@ async function run() {
 
   // ── 初始化：config.init ───────────────────────────────────────────────────
 
-  await sendAndWait('config.init', { workingDir: WORKING_DIR, logLevel: 'none', thinking: false });
+  await sendAndWait('config.init', { workingDir: WORKING_DIR, logLevel: 'none', thinking: false, enableClaudeCodeCompat: false, disableBackgroundTasks: true, disableTopicDetection: true });
 
   // ── 添加并应用模型 ────────────────────────────────────────────────────────
 

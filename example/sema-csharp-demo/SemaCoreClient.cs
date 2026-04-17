@@ -152,16 +152,16 @@ public class SemaCoreClient : IAsyncDisposable
         SendCommandAsync("session.interrupt");
 
     /// <summary>响应工具权限请求</summary>
-    public Task RespondToPermissionAsync(string toolName, string selected) =>
-        SendCommandAsync("permission.respond", new { toolName, selected });
+    public Task RespondToPermissionAsync(string toolId, string toolName, string selected) =>
+        SendCommandAsync("permission.respond", new { toolId, toolName, selected });
 
     /// <summary>响应问答请求</summary>
-    public Task RespondToQuestionAsync(string id, string answer) =>
-        SendCommandAsync("question.respond", new { id, answer });
+    public Task RespondToQuestionAsync(string agentId, Dictionary<string, string> answers) =>
+        SendCommandAsync("question.respond", new { agentId, answers });
 
     /// <summary>响应计划退出请求</summary>
-    public Task RespondToPlanExitAsync(string id, bool approved) =>
-        SendCommandAsync("plan.respond", new { id, approved });
+    public Task RespondToPlanExitAsync(string agentId, string selected) =>
+        SendCommandAsync("plan.respond", new { agentId, selected });
 
     /// <summary>添加模型</summary>
     public Task AddModelAsync(object config, bool skipValidation = false) =>
@@ -171,17 +171,21 @@ public class SemaCoreClient : IAsyncDisposable
     public Task ApplyTaskModelAsync(string main, string quick) =>
         SendCommandAsync("model.applyTask", new { main, quick });
 
+    /// <summary>删除模型</summary>
+    public Task DelModelAsync(string modelName) =>
+        SendCommandAsync("model.del", new { modelName });
+
     /// <summary>切换模型</summary>
     public Task SwitchModelAsync(string modelName) =>
         SendCommandAsync("model.switch", new { modelName });
 
-    /// <summary>设置代理模式（Agent / Plan）</summary>
-    public Task SetAgentModeAsync(string mode) =>
-        SendCommandAsync("agent.setMode", new { mode });
-
     /// <summary>获取模型信息</summary>
     public Task GetModelDataAsync() =>
         SendCommandAsync("model.getData");
+
+    /// <summary>设置代理模式（Agent / Plan）</summary>
+    public Task SetAgentModeAsync(string mode) =>
+        SendCommandAsync("config.updateAgentMode", new { mode });
 
     /// <summary>
     /// 初始化核心配置（在 CreateSession 之前调用）。

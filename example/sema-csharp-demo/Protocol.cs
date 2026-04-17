@@ -52,6 +52,10 @@ public class SemaCoreConfig
     [JsonProperty("enableLLMCache", NullValueHandling = NullValueHandling.Ignore)]
     public bool? EnableLLMCache { get; set; }
 
+    /// <summary>跳过 WebFetch 权限检查，默认 false</summary>
+    [JsonProperty("skipWebFetchPermission", NullValueHandling = NullValueHandling.Ignore)]
+    public bool? SkipWebFetchPermission { get; set; }
+
     /// <summary>限定使用的工具列表，null 表示使用所有工具</summary>
     [JsonProperty("useTools", NullValueHandling = NullValueHandling.Ignore)]
     public string[]? UseTools { get; set; }
@@ -59,6 +63,18 @@ public class SemaCoreConfig
     /// <summary>Agent 模式：Agent 或 Plan，默认 Agent</summary>
     [JsonProperty("agentMode", NullValueHandling = NullValueHandling.Ignore)]
     public string? AgentMode { get; set; }
+
+    /// <summary>是否禁用话题检测，默认 false</summary>
+    [JsonProperty("disableTopicDetection", NullValueHandling = NullValueHandling.Ignore)]
+    public bool? DisableTopicDetection { get; set; }
+
+    /// <summary>是否兼容 ClaudeCode 生态，默认 true</summary>
+    [JsonProperty("enableClaudeCodeCompat", NullValueHandling = NullValueHandling.Ignore)]
+    public bool? EnableClaudeCodeCompat { get; set; }
+
+    /// <summary>是否禁止后台任务，默认 false</summary>
+    [JsonProperty("disableBackgroundTasks", NullValueHandling = NullValueHandling.Ignore)]
+    public bool? DisableBackgroundTasks { get; set; }
 }
 
 

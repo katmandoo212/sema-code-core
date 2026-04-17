@@ -4,7 +4,10 @@ import readline from 'readline';
 const core = new SemaCore({
   workingDir: '/path/to/your/project', // Agent 将操作的目标代码仓库路径
   logLevel: 'none',
-  thinking: false
+  thinking: false,
+  disableTopicDetection: true,
+  enableClaudeCodeCompat: false,
+  disableBackgroundTasks: true,
 });
 
 // 配置模型（以 qwen3.6-plus 为例，更多LLM服务商请见"新增模型"文档） 只需要加一次，后面可以注释掉添加模型相关代码
@@ -43,13 +46,11 @@ const blue = (s) => `\x1b[34m${s}\x1b[0m`;
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 
 async function run() {
-  // 创建会话
   await new Promise((resolve) => {
     core.once('session:ready', (data) => { sessionId = data.sessionId; resolve(); });
     core.createSession();
   });
 
-  // Ctrl+C / ESC 中断
   process.on('SIGINT', () => {
     console.log('\n⚠️  中断会话...');
     if (sessionId) core.interruptSession();
@@ -61,7 +62,6 @@ async function run() {
     if (key && key.name === 'escape') core.interruptSession();
   });
 
-  // 事件日志
   const events = [
     'tool:execution:start', 'tool:execution:complete', 'tool:execution:error', 'tool:permission:request',
     'task:agent:start', 'task:agent:end', 'todos:update', 'session:interrupted'

@@ -35,27 +35,32 @@ client.On("message:complete", _ => Console.WriteLine());
 // ── 权限交互（覆盖日志处理器，追加用户确认逻辑）─────────────────
 client.On("tool:permission:request", data =>
 {
+    var toolId = data?["toolId"]?.ToString() ?? "";
     var toolName = data?["toolName"]?.ToString() ?? "";
     Console.Write(Blue("👤 权限响应 (y=agree / a=allow / n=refuse): "));
     var answer = Console.ReadLine()?.Trim() ?? "y";
     var selected = answer switch { "a" => "allow", "n" => "refuse", _ => "agree" };
-    _ = client.RespondToPermissionAsync(toolName, selected);
+    _ = client.RespondToPermissionAsync(toolId, toolName, selected);
 });
 
 // ── 问答请求 ──────────────────────────────────────────────────────
 client.On("ask:question:request", data =>
 {
-    var id = data?["id"]?.ToString() ?? "";
-    Console.WriteLine($"[Question] {data?["question"]}");
+    var agentId = data?["agentId"]?.ToString() ?? "";
+    var questions = data?["questions"];
+    Console.WriteLine($"[Question] {questions}");
     Console.Write("Your answer: ");
-    _ = client.RespondToQuestionAsync(id, Console.ReadLine() ?? "确认");
+    var input = Console.ReadLine() ?? "确认";
+    var firstQuestion = questions?[0]?["question"]?.ToString() ?? "";
+    _ = client.RespondToQuestionAsync(agentId, new Dictionary<string, string> { { firstQuestion, input } });
 });
 
 // ── Plan 退出请求 ─────────────────────────────────────────────────
 client.On("plan:exit:request", data =>
 {
     Console.WriteLine("[Plan] Exit plan mode — approving");
-    _ = client.RespondToPlanExitAsync(data?["id"]?.ToString() ?? "", true);
+    var agentId = data?["agentId"]?.ToString() ?? "";
+    _ = client.RespondToPlanExitAsync(agentId, "startEditing");
 });
 
 // ── 连接 ──────────────────────────────────────────────────────────
@@ -74,9 +79,12 @@ catch (Exception ex)
 // ── 核心配置（对应 quickstart.mjs 的 new SemaCore({...}) 选项）──────
 await client.InitCoreAsync(new SemaCoreConfig
 {
-    WorkingDir = "/path/to/your/project", // Target repository path for the Agent to operate on
+    WorkingDir = "/path/to/your/project", // Agent 将操作的目标代码仓库路径
     LogLevel = "none",
     Thinking = false,
+    EnableClaudeCodeCompat = false,
+    DisableBackgroundTasks = true,
+    DisableTopicDetection = true,
     // 按需启用其他选项：
     // SkipFileEditPermission = true,
     // SkipBashExecPermission = true,
@@ -84,15 +92,17 @@ await client.InitCoreAsync(new SemaCoreConfig
     // SystemPrompt = "你是一个 C# 专家",
 });
 
-// ── 配置模型（对应 quickstart.mjs 的 addModel + applyTaskModel）──────
+// ── 配置模型（以 qwen3.6-plus 为例，更多LLM服务商请见"新增模型"文档）──────
+// 只需要加一次，后面可以注释掉添加模型相关代码
 var modelConfig = new
 {
-    provider = "deepseek",
-    modelName = "deepseek-chat",
-    baseURL = "https://api.deepseek.com/anthropic",
-    apiKey = "sk-your-api-key", // Replace with your API Key
-    maxTokens = 8192,
-    contextLength = 128000
+    provider = "qwen",
+    modelName = "qwen3.6-plus",
+    baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiKey = "sk-",
+    maxTokens = 32000,
+    contextLength = 256000,
+    adapt = "openai"
 };
 await client.AddModelAsync(modelConfig);
 var modelId = $"{modelConfig.modelName}[{modelConfig.provider}]";
