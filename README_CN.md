@@ -55,15 +55,15 @@
 [Sema Code VSCode Extension](https://github.com/midea-ai/sema-code-vscode-extension) 是基于 Sema Code Core 引擎的 VSCode 智能编程插件。
 
 <p align="center">
-  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/plan-mode.gif" alt="Sema Code VSCode Extension" width="90%"/>
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/plan-mode.gif" alt="Sema Code VSCode Extension"/>
 </p>
 
 ### SemaClaw 
 
-[Sema Code VSCode Extension](https://github.com/midea-ai/SemaClaw) 是一个通用的工程框架，用于构建个人 AI 代理。
+[SemaClaw](https://github.com/midea-ai/SemaClaw) 是一个通用的工程框架，用于构建个人 AI 代理。
 
 <p align="center">
-  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/semaclaw-intro.GIF" alt="SemaClaw" width="90%"/>
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/semaclaw-intro.GIF" alt="SemaClaw"/>
 </p>
 
 ### Skill Web App
@@ -71,7 +71,7 @@
 基于 Sema Code Core 的 Skill 网页应用，集成 Agent Skill Browser / Creator / Playground 演示。
 
 <p align="center">
-  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/skill-create.gif" alt="Skill Web App" width="90%"/>
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/skill-create.gif" alt="Skill Web App"/>
 </p>
 
 ## 🚀 快速开始
@@ -121,8 +121,5 @@ npm install
 # 2. 编译
 npm run build
 
-# 3. 运行测试
-node test/addModel.test.js
-node test/miniCli.test.js
 ```
 

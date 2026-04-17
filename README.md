@@ -55,15 +55,15 @@
 [Sema Code VSCode Extension](https://github.com/midea-ai/sema-code-vscode-extension) is a VSCode intelligent programming plugin based on the Sema Code Core engine.
 
 <p align="center">
-  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/plan-mode.gif" alt="Sema Code VSCode Extension" width="90%"/>
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/plan-mode.gif" alt="Sema Code VSCode Extension"/>
 </p>
 
 ### SemaClaw 
 
-[Sema Code VSCode Extension](https://github.com/midea-ai/SemaClaw) is a general-purpose engineering harness for building personal AI agents.
+[SemaClaw](https://github.com/midea-ai/SemaClaw) is a general-purpose engineering harness for building personal AI agents.
 
 <p align="center">
-  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/semaclaw-intro.GIF" alt="SemaClaw" width="90%"/>
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/semaclaw-intro.GIF" alt="SemaClaw"/>
 </p>
 
 ### Skill Web App
@@ -71,7 +71,7 @@
 A Skill web application based on Sema Code Core, integrating Agent Skill Browser / Creator / Playground demo.
 
 <p align="center">
-  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/skill-create.gif" alt="Skill Web App" width="90%"/>
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/skill-create.gif" alt="Skill Web App"/>
 </p>
 
 ## 🚀 Quick Start
@@ -121,7 +121,4 @@ npm install
 # 2. Build
 npm run build
 
-# 3. Run tests
-node test/addModel.test.js
-node test/miniCli.test.js
 ```
