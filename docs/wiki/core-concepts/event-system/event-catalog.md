@@ -331,7 +331,7 @@ sema.respondToAskQuestion({
 
 ### `todos:update`
 
-任务列表发生变化（TodoWrite 工具执行后触发）。
+任务列表发生变化（TaskCreate / TaskUpdate 工具执行后触发）。
 
 ```javascript
 TodoItem[]

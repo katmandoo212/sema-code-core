@@ -4,14 +4,15 @@
 
 | 提供商 | 模型 | baseURL | SDK 类型 |
 |--------|----------|----------|----------|
-| openrouter | anthropic/claude-sonnet-4.5 | https://openrouter.ai/api | anthropic |
-| minimax | MiniMax-M2.5 | https://api.minimaxi.com/anthropic | anthropic |
-| deepseek | deepseek-reasoner | https://api.deepseek.com/anthropic | anthropic |
-| glm | glm-5 | https://open.bigmodel.cn/api/paas/v4 | openai |
+| openrouter | claude-opus-4.6 | https://openrouter.ai/api | anthropic |
+| qwen | qwen3.6-plus | https://dashscope.aliyuncs.com/compatible-mode/v1 | anthropic |
+| glm | glm-5.1 | https://open.bigmodel.cn/api/paas/v4 | openai |
+| minimax | MiniMax-M2.7 | https://api.minimaxi.com/anthropic | anthropic |
 | kimi | kimi-k2.5 | https://api.moonshot.cn/v1 | openai |
+| deepseek | deepseek-reasoner | https://api.deepseek.com/anthropic | anthropic |
 
 <figure align="center">
-  <img src="images/model-list.png" alt="model-list">
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/model-config.png" alt="model-list">
   <figcaption>Sema Code vscode插件页面截图</figcaption>
 </figure>
 

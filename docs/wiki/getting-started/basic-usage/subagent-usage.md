@@ -66,8 +66,8 @@ model: main
 | 名称 | 模型 | 工具 | 用途 |
 |------|------|------|------|
 | `general-purpose` | main | `*` | 通用研究、复杂搜索、多步任务 |
-| `Explore` | quick | `Bash, Glob, Grep, Read, TodoWrite` | 代码库快速探索（**只读**） |
-| `Plan` | main | `Bash, Glob, Grep, Read, TodoWrite` | 实施方案设计、技术评估（**只读**） |
+| `Explore` | quick | `Bash, Glob, Grep, Read, TaskCreate, TaskGet, TaskUpdate, TaskList` | 代码库快速探索（**只读**） |
+| `Plan` | main | `Bash, Glob, Grep, Read, TaskCreate, TaskGet, TaskUpdate, TaskList` | 实施方案设计、技术评估（**只读**） |
 
 > `Explore` 与 `Plan` 在 prompt 中明确禁止任何写入/修改操作；即使 `tools` 中包含 `Bash`，也只允许只读 shell 命令。
 

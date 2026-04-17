@@ -5,7 +5,7 @@ const core = new SemaCore({
   workingDir: '/path/to/your/project', // 修改为你的项目路径
   logLevel: 'none',
   thinking: false,
-  useTools: ["Bash", "Glob", "Grep", "Read", "Edit", "Write", "Skill", "Task", "TodoWrite", "NotebookEdit"]
+  useTools: ["Bash", "Glob", "Grep", "Read", "Edit", "Write", "Skill", "Task", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList", "NotebookEdit"]
 });
 
 let sessionId = null;

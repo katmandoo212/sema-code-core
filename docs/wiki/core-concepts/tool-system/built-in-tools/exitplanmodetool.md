@@ -86,6 +86,6 @@ sema.on('plan:implement', ({ planFilePath, planContent }) => {
 
 1. `agentMode` 切换为 `'Agent'`
 2. 系统提示词重新生成（不含 Plan 模式提示）
-3. 工具列表重新构建（加入 `TodoWrite`）
+3. 工具列表重新构建（加入 `TaskCreate`、`TaskGet`、`TaskUpdate`、`TaskList`）
 4. `startEditing`：保留消息历史继续
 5. `clearContextAndStart`：清空历史，以计划内容作为新的用户消息开始

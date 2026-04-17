@@ -98,7 +98,7 @@ sema-code-core/
 
 ### 工具系统（`src/tools/`）
 
-14 个内置工具，统一实现 `Tool<TInput, TOutput>` 接口：
+18 个内置工具，统一实现 `Tool<TInput, TOutput>` 接口：
 
 | 工具 | 用途 |
 |---|---|
@@ -106,7 +106,9 @@ sema-code-core/
 | Glob / Grep | 文件 / 文本搜索 |
 | Read / Write / Edit | 文件读取、写入、补丁编辑 |
 | NotebookEdit | Jupyter Notebook 编辑 |
-| TodoWrite | 任务规划 / 待办管理 |
+| TaskCreate / TaskGet / TaskUpdate / TaskList | 任务规划 / 待办管理 |
+| CronCreate / CronDelete / CronList | 定时任务管理 |
+| WebFetch | 网页内容抓取 |
 | Skill | 调用 Skill 插件 |
 | Agent | 启动子 Agent（替代旧名 `Task`，支持后台运行） |
 | TaskOutput | 查看后台任务输出 |

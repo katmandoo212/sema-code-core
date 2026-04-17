@@ -28,7 +28,7 @@ interface SemaCoreConfig {
 > 可通过 `sema.updateCoreConfByKey(key, value)` 或 `sema.updateCoreConfig(partial)` 在运行时更新这些字段（除 `workingDir`、`logLevel`、`useTools`、`agentMode` 外，其余可更新字段在 `UpdatableCoreConfigKeys` 中定义）。`useTools` 通过 `updateUseTools()` 更新；`agentMode` 通过 `updateAgentMode()` 更新。
 
 <figure align="center">
-  <img src="images/system-conf.png" alt="model-list">
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/system-conf.png" alt="model-list">
   <figcaption>Sema Code vscode插件页面截图</figcaption>
 </figure>
 
@@ -177,8 +177,9 @@ const sema = new SemaCore({
   skipBashExecPermission: true,
   skipSkillPermission: true,
   skipMCPToolPermission: true,
+  skipWebFetchPermission: true,
   // 移除 AskUserQuestion / ExitPlanMode（避免主动等待用户）
-  useTools: ["Bash", "Glob", "Grep", "Read", "Edit", "Write", "Skill", "Agent", "TodoWrite", "NotebookEdit", "TaskOutput", "TaskStop"]
+  useTools: ["Bash", "Glob", "Grep", "Read", "Edit", "Write", "Skill", "Agent", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList", "NotebookEdit", "TaskOutput", "TaskStop"]
 })
 ```
 
@@ -195,7 +196,7 @@ const sema = new SemaCore({
 
 ```javascript
 // 限制可用工具，只允许读取和搜索
-sema.updateUseTools(['Read', 'Glob', 'Grep', 'Bash', 'TodoWrite'])
+sema.updateUseTools(['Read', 'Glob', 'Grep', 'Bash', 'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList'])
 ```
 
 ### Plan 模式（只分析不修改）

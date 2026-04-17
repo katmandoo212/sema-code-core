@@ -103,7 +103,7 @@ const canRunConcurrently = toolUseMessages.every(msg => {
 
 **优势**：避免写操作之间的竞态（例如先 `Write` 后 `Edit` 同一文件）
 
-**典型工具**：`Bash`、`Write`、`Edit`、`TodoWrite`、`Agent` 等
+**典型工具**：`Bash`、`Write`、`Edit`、`TaskCreate`、`TaskUpdate`、`Agent` 等
 
 
 ## 中断机制
@@ -190,7 +190,7 @@ controlSignal: {
 重建步骤：
 
 1. 重新获取工具集：`getTools(useTools) + getMCPManager().getMCPTools()`
-2. 若 `newMode === 'Plan'` → 过滤掉 `TodoWrite`
+2. 若 `newMode === 'Plan'` → 过滤掉 `TaskCreate`、`TaskUpdate`
 3. 用新 tools 构造 `newAgentContext`
 4. 重新生成系统提示词 `formatSystemPrompt()`（不再含 Plan 模式提示）
 5. 决定下一轮消息历史：

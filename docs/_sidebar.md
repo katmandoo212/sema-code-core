@@ -1,4 +1,5 @@
 - **概述**
+  - [开篇：AI 编码的能力，为什么被"锁死"了？](wiki/overview/introduction)
   - [项目概述](wiki/overview/project)
   - [架构设计](wiki/overview/architecture)
 - **使用**

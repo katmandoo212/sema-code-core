@@ -32,7 +32,7 @@ const modelConfig = {
 node quickstart.mjs
 ```
 
-<img src="images/mini-cli.png" alt="miniCli" />
+<img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/quick-start.gif" alt="miniCli" />
 
 跨语言集成参考 [README.md](https://github.com/midea-ai/sema-code-core/blob/main/example/README.md)
 

@@ -3,9 +3,11 @@
 MCP（Model Context Protocol）是一种标准协议，允许为 AI 扩展自定义工具能力。通过 MCP，任何外部服务都能以标准化方式为 Sema 提供工具。
 
 <figure align="center">
-  <img src="images/mcp.png" alt="model-list">
+  <img src="https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/mcp.png" alt="model-list">
   <figcaption>Sema Code vscode 插件页面截图</figcaption>
 </figure>
+
+![MCP 演示](https://github.com/midea-ai/sema-code-core/releases/download/docs-assets/mcp.gif)
 
 ## MCPServerConfig 接口
 

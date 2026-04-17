@@ -37,8 +37,8 @@ graph TB
         EB["EventBus\n事件总线（Pub/Sub）"]
     end
 
-    subgraph ToolSystem["工具系统（14 个内置工具）"]
-        BT["Bash · Read · Write · Edit\nGlob · Grep · Skill · Agent\nTodoWrite · NotebookEdit\nAskUserQuestion · ExitPlanMode\nTaskOutput · TaskStop"]
+    subgraph ToolSystem["工具系统（18 个内置工具）"]
+        BT["Bash · Read · Write · Edit\nGlob · Grep · Skill · Agent\nTaskCreate · TaskGet · TaskUpdate · TaskList\nCronCreate · CronDelete · CronList · WebFetch\nNotebookEdit · AskUserQuestion · ExitPlanMode\nTaskOutput · TaskStop"]
         MCP["MCP 工具\n动态扩展工具"]
     end
 
@@ -112,7 +112,7 @@ src/
 │   ├── Conversation.ts     # AI 对话循环（异步生成器）
 │   └── RunTools.ts         # 工具执行（并发/串行策略）
 │
-├── tools/                  # 工具系统（14 个内置工具）
+├── tools/                  # 工具系统（18 个内置工具）
 │   ├── base/
 │   │   ├── Tool.ts         # 工具基础接口
 │   │   └── tools.ts        # 工具注册表与构建器
@@ -123,7 +123,14 @@ src/
 │   ├── Write/              # 文件写入工具
 │   ├── Edit/               # 文件编辑工具
 │   ├── NotebookEdit/       # Notebook 编辑工具
-│   ├── TodoWrite/          # 任务规划工具
+│   ├── TaskCreate/         # 创建任务工具
+│   ├── TaskGet/            # 查询任务工具
+│   ├── TaskUpdate/         # 更新任务工具
+│   ├── TaskList/           # 任务列表工具
+│   ├── CronCreate/         # 创建定时任务工具
+│   ├── CronDelete/         # 删除定时任务工具
+│   ├── CronList/           # 定时任务列表工具
+│   ├── WebFetch/           # 网页抓取工具
 │   ├── Agent/              # 子代理工具（原 Task，支持后台运行）
 │   ├── Skill/              # Skill 调用工具
 │   ├── AskUserQuestion/    # 用户交互工具
